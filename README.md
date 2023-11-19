@@ -1,5 +1,10 @@
 # wirething-poc
 
+This proof of concept uses the [ntfy](https://ntfy.sh) service, the project
+[udphole](https://github.com/wirethingproject/udphole) deployed to
+[fly.io](https://fly.io) and [wireguard](https://www.wireguard.com) to connect
+without any login two devices behind NAT.
+
     # Setup
 
     umask 077
