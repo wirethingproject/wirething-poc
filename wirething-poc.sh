@@ -19,7 +19,7 @@ function die() {
 }
 
 # params
-    
+
 OS="$(uname -s)"
 
 WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
@@ -27,7 +27,6 @@ WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
 WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
 WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
 
-WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
 WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
 WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
 
@@ -70,6 +69,15 @@ case "${WT_PUBSUB_TYPE}" in
         die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
 esac
 
+WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-basic}"
+case "${WT_TOPIC_TYPE}" in
+    basic)
+        WT_BASIC_TOPIC_TAG="${WT_BASIC_TOPIC_TAG:-wirething}"
+        ;;
+    *)
+        die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: basic"
+esac
+
 [ "$(id -u)" != "0" ] \
     && die "Not a root user"
 
@@ -109,6 +117,7 @@ alias sha256sum='sha256sum | cut -f 1 -d " "'
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
 alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
+alias topic="${WT_TOPIC_TYPE}_topic"
 
 # wireguard
 
@@ -241,11 +250,33 @@ function ntfy_pubsub() {
     esac
 }
 
-# wirething log
+# basic topic
 
-function log_date() {
-    date -Iseconds
+function basic_topic_timestamp() {
+    epoch="$(date -u "+%s")"
+    echo -n "$((${epoch} / 60 / 60))"
 }
+
+function basic_topic() {
+    action="${1}" && shift
+
+    tag_hash="$(echo -n ${WT_BASIC_TOPIC_TAG} | sha256sum)"
+    timestamp_hash="$(basic_topic_timestamp | sha256sum)"
+
+    host_id_hash="$(echo -n "${host_id}" | sha256sum)"
+    peer_id_hash="$(echo -n "${peer_id}" | sha256sum)"
+
+    case "${action}" in
+        push)
+            echo -n "${tag_hash}:${timestamp_hash}:${host_id_hash}:${peer_id_hash}" | sha256sum
+            ;;
+        pull)
+            echo -n "${tag_hash}:${timestamp_hash}:${peer_id_hash}:${host_id_hash}" | sha256sum
+            ;;
+    esac
+}
+
+# wirething log
 
 function log_punch() {
     info "punch: ${host_endpoint} -> ${host_port}"
@@ -271,41 +302,15 @@ function log_pull_peer_endpoint() {
     done
 }
 
-# wirething topic
-
-function wt_topic_timestamp() {
-    epoch="$(date -u "+%s")"
-    echo -n "$((${epoch} / 60 / 60))"
-}
-
-function wt_topic() {
-    action="${1}" && shift
-    
-    tag_hash="$(echo -n ${WT_TOPIC_TAG} | sha256sum)"
-    timestamp_hash="$(wt_topic_timestamp | sha256sum)"
-
-    host_id_hash="$(echo -n "${host_id}" | sha256sum)"
-    peer_id_hash="$(echo -n "${peer_id}" | sha256sum)"
-    
-    case "${action}" in
-        push)
-            echo -n "${tag_hash}:${timestamp_hash}:${host_id_hash}:${peer_id_hash}" | sha256sum
-            ;;
-        pull)
-            echo -n "${tag_hash}:${timestamp_hash}:${peer_id_hash}:${host_id_hash}" | sha256sum
-            ;;
-    esac
-}
-
 # wirething host
 
 function wt_punch() {
     punch open
-    
+
     host_port="$(punch port)"
     host_endpoint="$(punch endpoint)"
     log_punch
-    
+
     punch close
 }
 
@@ -322,12 +327,12 @@ function wt_host_loop() {
 
     while true
     do
-        wt_punch 
+        wt_punch
         wt_set_host
 
         for peer_id in ${peer_id_list}
         do
-            topic="$(wt_topic push)"
+            topic="$(topic push)"
             log_push_host_endpoint
             pubsub push "${topic}" "${host_endpoint}"
         done
@@ -351,7 +356,7 @@ function wt_set_peer() {
 }
 
 function wt_pull_peer() {
-    topic="$(wt_topic pull)"
+    topic="$(topic pull)"
     pubsub pull "${topic}" | log_pull_peer_endpoint
 }
 
