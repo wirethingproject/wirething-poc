@@ -369,7 +369,7 @@ function wt_peer_start() {
 function wt_open() {
     trap wt_close EXIT
 
-    [ "$(punch protocol)" == "$(interface protocol)" ] \
+    [ "$(punch protocol)" != "$(interface protocol)" ] \
         && echo "ERROR: Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ" \
         && exit 1
 
