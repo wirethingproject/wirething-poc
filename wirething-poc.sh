@@ -15,7 +15,7 @@ WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
 WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
 
 WT_INTERFACE="${WT_INTERFACE:-wg}"
-case "${WT_INTERFACE?Variable not set, options: wg}" in
+case "${WT_INTERFACE}" in
     wg)
         WG_INTERFACE="${WG_INTERFACE:-}"
         if [ "${WG_INTERFACE}" == "" ]
@@ -25,20 +25,6 @@ case "${WT_INTERFACE?Variable not set, options: wg}" in
 
             WG_USERSPACE="${WG_USERSPACE:-wireguard-go}"
             WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
-            
-            WG_TUN_NAME_FILE="/var/run/wireguard/$(uuidgen).wirething"
-            case "${OS}" in
-                Darwin)
-                    WG_TUN_NAME="utun"
-                    ;;
-                Linux)
-                    WG_TUN_NAME="wt0"
-                    echo "${WG_TUN_NAME}" > "${WG_TUN_NAME_FILE}"
-                    ;;
-                *)
-                    echo "ERROR: OS not supported *${OS}*" \
-                    exit 1
-            esac
         fi
         ;;
     *)
@@ -70,6 +56,33 @@ esac
 [ "$(id -u)" != "0" ] \
     && echo "ERROR: Not a root user" \
     && exit 1
+
+umask 077
+
+case "${WT_INTERFACE}" in
+    wg)
+        WG_INTERFACE="${WG_INTERFACE:-}"
+        if [ "${WG_INTERFACE}" == "" ]
+        then
+            WG_TUN_NAME_FILE="/var/run/wireguard/$(uuidgen).wirething"
+            case "${OS}" in
+                Darwin)
+                    WG_TUN_NAME="utun"
+                    ;;
+                Linux)
+                    WG_TUN_NAME="wt0$(basename "${WG_TUN_NAME_FILE}" | cut -f 1 -d -)"
+                    echo "${WG_TUN_NAME}" > "${WG_TUN_NAME_FILE}"
+                    ;;
+                *)
+                    echo "ERROR: OS not supported *${OS}*" \
+                    exit 1
+            esac
+        fi
+        ;;
+    *)
+        echo "ERROR: Invalid interface type *${WT_INTERFACE}*, options: wg" \
+            && exit 1
+esac
 
 # hacks
 
