@@ -61,7 +61,6 @@ umask 077
 
 case "${WT_INTERFACE}" in
     wg)
-        WG_INTERFACE="${WG_INTERFACE:-}"
         if [ "${WG_INTERFACE}" == "" ]
         then
             WG_TUN_NAME_FILE="/var/run/wireguard/$(uuidgen).wirething"
