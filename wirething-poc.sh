@@ -6,6 +6,8 @@ OS="$(uname -s)"
 
 WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
 WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
+WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
+WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
 
 WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
 WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
@@ -337,9 +339,11 @@ function wt_pull_peer() {
 }
 
 function wt_peer_loop() {
+    sleep "${WT_PEER_START_DELAY}"
     while true
     do
         wt_pull_peer | wt_set_peer
+        sleep "${WT_PEER_INTERVAL}"
     done
 }
 
