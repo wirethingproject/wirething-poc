@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 
-shopt -s expand_aliases
+# set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
+set -euo pipefail
 
+shopt -s expand_aliases
 alias sha256sum='sha256sum | cut -f 1 -d " "'
+
+export LC_ALL=C
+
+umask 077
+
+# auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
+
+auto_su() {
+    self="$(readlink -f "${BASH_SOURCE[0]}")"
+
+    su_prompt="*${self##*/}* must be run as *root*. Please enter the password for *%u* to continue: "
+
+	[[ ${UID} == 0 ]] \
+        || exec sudo --preserve-env --prompt "${su_prompt}" -- "${BASH}" -- "${self}"
+}
 
 # log
 
@@ -134,6 +151,7 @@ function udphole_punch() {
             UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
             ;;
         up)
+            # https://www.xmodulo.com/tcp-udp-socket-bash-shell.html
             exec 100<>/dev/${protocol}/${UDPHOLE_HOST}/${UDPHOLE_PORT}
             echo "" >&100
             ;;
@@ -174,12 +192,12 @@ function ntfy_pubsub() {
         push)
             topic="${1}" && shift
             host_endpoint="${1}" && shift
-            curl -Ns --max-time "${WT_PUSH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" \
+            { curl -Ns --max-time "${WT_PUSH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
                 > /dev/null
             ;;
         pull)
             topic="${1}" && shift
-            curl -Ns --max-time "${WT_PULL_TIMEOUT}" "${NTFY_URL}/${topic}/raw" \
+            { curl -Ns --max-time "${WT_PULL_TIMEOUT}" "${NTFY_URL}/${topic}/raw" || true; } \
                 | ntfy_pull_filter
             ;;
     esac
@@ -283,6 +301,7 @@ function wt_host_loop() {
     host_id="$(interface get host_id)"
     peer_id_list="$(interface get peers_id_list)"
 
+    info "wt_host_loop: started"
     while true
     do
         wt_punch
@@ -297,6 +316,7 @@ function wt_host_loop() {
 
         sleep "${WT_HOST_INTERVAL}"
     done
+    info "wt_host_loop: stopped"
 }
 
 function wt_host_start() {
@@ -320,11 +340,13 @@ function wt_pull_peer() {
 
 function wt_peer_loop() {
     sleep "${WT_PEER_START_DELAY}"
+    info "wt_peer_loop: started"
     while true
     do
         wt_pull_peer | wt_set_peer
         sleep "${WT_PEER_INTERVAL}"
     done
+    info "wt_peer_loop: stopped"
 }
 
 function wt_peer_start() {
@@ -360,6 +382,8 @@ function wt_init() {
     punch init
     pubsub init
     topic init
+
+    auto_su
 }
 
 function wt_up() {
@@ -383,11 +407,5 @@ function main() {
 
     wait $(jobs -p)
 }
-
-[ "$(id -u)" != "0" ] \
-    && die "Not a root user"
-
-umask 077
-
 
 main
