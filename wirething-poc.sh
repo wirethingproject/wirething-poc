@@ -141,8 +141,8 @@ function wg_interface() {
             WG_INTERFACE="${WG_INTERFACE:-}"
             [ "${WG_INTERFACE}" != "" ] && return 0
 
-            WG_HOST_PRIVATE_KEY_FILE="${WG_HOST_PRIVATE_KEY_FILE?Variable not set}"
-            WG_PEER_PUBLIC_KEY_FILE_LIST="${WG_PEER_PUBLIC_KEY_FILE_LIST?Variable not set}"
+            WG_HOST_PRIVATE_KEY_FILE="${WG_HOST_PRIVATE_KEY_FILE:?Variable not set}"
+            WG_PEER_PUBLIC_KEY_FILE_LIST="${WG_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
 
             WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
             WG_USERSPACE="${WG_USERSPACE:-wireguard-go}"
