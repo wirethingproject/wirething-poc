@@ -366,15 +366,6 @@ function wt_peer_start() {
 
 # wirething main
 
-#function start_wg() {
-#    while true
-#    do
-#        sleep 15
-#        interface status \
-#            | grep "listening\|endpoint\|handshake\|transfer"
-#    done
-#}
-
 function wt_open() {
     trap wt_close EXIT
 
@@ -394,7 +385,6 @@ function wt_close() {
 # main
 
 function main() {
-    #start_wg &
     wt_open
     wt_peer_start
     wt_host_start
