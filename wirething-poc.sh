@@ -252,32 +252,6 @@ punch ""     || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
 pubsub ""    || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
 topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: basic"
 
-# wirething log
-
-function log_punch() {
-    info "punch: ${host_endpoint} -> ${host_port}"
-}
-
-function log_set_host_port() {
-    info "set_host_port ${host_id::4}...: ${host_port}"
-}
-
-function log_set_peer_endpoint() {
-    info "set_peer_endpoint ${peer_id::4}...: ${peer_endpoint}"
-}
-
-function log_push_host_endpoint() {
-    info "push_host_endpoint ${host_id::4}... -> ${topic::4}...: ${host_endpoint}"
-}
-
-function log_pull_peer_endpoint() {
-    while read peer_endpoint
-    do
-        info "pull_peer_endpoint ${topic::4}... -> ${peer_id::4}...: ${peer_endpoint}"
-        echo "${peer_endpoint}"
-    done
-}
-
 # wirething host
 
 function wt_punch() {
@@ -285,13 +259,13 @@ function wt_punch() {
 
     host_port="$(punch port)"
     host_endpoint="$(punch endpoint)"
-    log_punch
+    info "${short_host_id} punch ${host_port} <- ${host_endpoint}"
 
     punch down
 }
 
-function wt_set_host() {
-    log_set_host_port
+function wt_set_host_port() {
+    info "${short_host_id} set_host_port ${host_port}"
     interface set host_port "${host_port}"
 }
 
@@ -299,24 +273,30 @@ function wt_host_loop() {
     sleep "${WT_HOST_START_DELAY}"
 
     host_id="$(interface get host_id)"
+    short_host_id="host:${host_id::8}"
+
     peer_id_list="$(interface get peers_id_list)"
 
-    info "wt_host_loop: started"
+    info "host_loop: started"
     while true
     do
         wt_punch
-        wt_set_host
+        wt_set_host_port
 
         for peer_id in ${peer_id_list}
         do
+            short_peer_id="peer:${peer_id::8}"
+
             topic="$(topic push)"
-            log_push_host_endpoint
+            short_topic="push:${topic::8}"
+
+            info "${short_host_id} push_host_endpoint ${host_endpoint} -> ${short_topic}"
             pubsub push "${topic}" "${host_endpoint}"
         done
 
         sleep "${WT_HOST_INTERVAL}"
     done
-    info "wt_host_loop: stopped"
+    info "host_loop: stopped"
 }
 
 function wt_host_start() {
@@ -325,36 +305,44 @@ function wt_host_start() {
 
 # wirething peer
 
-function wt_set_peer() {
+function wt_set_peer_endpoint() {
     while read peer_endpoint
     do
-        log_set_peer_endpoint
+        info "${short_peer_id} set_peer_endpoint ${peer_endpoint}"
         interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
     done
 }
 
 function wt_pull_peer() {
     topic="$(topic pull)"
-    pubsub pull "${topic}" | log_pull_peer_endpoint
+    short_topic="pull:${topic::8}"
+
+    pubsub pull "${topic}" | while read peer_endpoint
+    do
+        info "${short_peer_id} pull_peer_endpoint ${peer_endpoint} <- ${short_topic}"
+        echo "${peer_endpoint}"
+    done
 }
 
 function wt_peer_loop() {
     sleep "${WT_PEER_START_DELAY}"
-    info "wt_peer_loop: started"
+    info "peer_loop: started"
     while true
     do
-        wt_pull_peer | wt_set_peer
+        wt_pull_peer | wt_set_peer_endpoint
         sleep "${WT_PEER_INTERVAL}"
     done
-    info "wt_peer_loop: stopped"
+    info "peer_loop: stopped"
 }
 
 function wt_peer_start() {
     host_id="$(interface get host_id)"
+    short_host_id="host:${host_id::8}"
     peer_id_list="$(interface get peers_id_list)"
 
     for peer_id in ${peer_id_list}
     do
+        short_peer_id="peer:${peer_id::8}"
         wt_peer_loop &
     done
 }
@@ -384,16 +372,21 @@ function wt_init() {
     topic init
 
     auto_su
+
+    info "init: done"
 }
 
 function wt_up() {
     trap wt_down EXIT
     interface up
+
+    info "up: done"
 }
 
 function wt_down() {
     echo
     interface down
+    info "down: done"
     kill 0
 }
 
