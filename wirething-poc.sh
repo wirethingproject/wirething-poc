@@ -270,14 +270,11 @@ function wt_set_host_port() {
 }
 
 function wt_host_loop() {
-    sleep "${WT_HOST_START_DELAY}"
-
-    host_id="$(interface get host_id)"
     short_host_id="host:${host_id::8}"
 
-    peer_id_list="$(interface get peers_id_list)"
+    sleep "${WT_HOST_START_DELAY}"
 
-    info "host_loop: started"
+    info "${short_host_id} host_loop: started"
     while true
     do
         wt_punch
@@ -285,9 +282,9 @@ function wt_host_loop() {
 
         for peer_id in ${peer_id_list}
         do
-            short_peer_id="peer:${peer_id::8}"
-
             topic="$(topic push)"
+
+            short_peer_id="peer:${peer_id::8}"
             short_topic="push:${topic::8}"
 
             info "${short_host_id} push_host_endpoint ${host_endpoint} -> ${short_topic}"
@@ -296,11 +293,7 @@ function wt_host_loop() {
 
         sleep "${WT_HOST_INTERVAL}"
     done
-    info "host_loop: stopped"
-}
-
-function wt_host_start() {
-    wt_host_loop &
+    info "${short_host_id} host_loop: stopped"
 }
 
 # wirething peer
@@ -325,80 +318,97 @@ function wt_pull_peer() {
 }
 
 function wt_peer_loop() {
+    short_host_id="host:${host_id::8}"
+    short_peer_id="peer:${peer_id::8}"
+
     sleep "${WT_PEER_START_DELAY}"
-    info "peer_loop: started"
+
+    info "${short_peer_id} peer_loop: started"
     while true
     do
         wt_pull_peer | wt_set_peer_endpoint
         sleep "${WT_PEER_INTERVAL}"
     done
-    info "peer_loop: stopped"
-}
-
-function wt_peer_start() {
-    host_id="$(interface get host_id)"
-    short_host_id="host:${host_id::8}"
-    peer_id_list="$(interface get peers_id_list)"
-
-    for peer_id in ${peer_id_list}
-    do
-        short_peer_id="peer:${peer_id::8}"
-        wt_peer_loop &
-    done
+    info "${short_peer_id} peer_loop: stopped"
 }
 
 # wirething main
 
-function wt_init() {
-    OS="$(uname -s)"
+function wirething() {
+    action="${1}" && shift
+    case "${action}" in
+        init)
+            OS="$(uname -s)"
 
-    WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
-    WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
-    WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
-    WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
+            WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
+            WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
+            WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
+            WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
 
-    WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
-    WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
+            WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
+            WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
 
-    WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
-    WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
+            WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
+            WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
 
-    [ "$(punch protocol)" != "$(interface protocol)" ] \
-        && die "Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ"
+            [ "$(punch protocol)" != "$(interface protocol)" ] \
+                && die "Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ"
 
-    interface init
-    punch init
-    pubsub init
-    topic init
+            interface init
+            punch init
+            pubsub init
+            topic init
 
-    auto_su
+            info "init: done"
+            ;;
+        up)
+            trap "wirething down" EXIT
+            interface up
 
-    info "init: done"
-}
+            info "up: done"
+            ;;
+        down)
+            echo
+            interface down
+            info "down: done"
+            kill 0
+            ;;
+        start)
+            param="${1}" && shift
+            host_id="$(interface get host_id)"
+            peer_id_list="$(interface get peers_id_list)"
 
-function wt_up() {
-    trap wt_down EXIT
-    interface up
+            case "${param}" in
+                host)
 
-    info "up: done"
-}
-
-function wt_down() {
-    echo
-    interface down
-    info "down: done"
-    kill 0
+                    wt_host_loop &
+                    ;;
+                peer)
+                    for peer_id in ${peer_id_list}
+                    do
+                        wt_peer_loop &
+                    done
+                    ;;
+            esac
+            ;;
+        wait)
+            wait $(jobs -p)
+            ;;
+    esac
 }
 
 # main
 
 function main() {
-    wt_init
-    wt_up
-    wt_peer_start
-    wt_host_start
+    wirething init
 
-    wait $(jobs -p)
+    auto_su
+    wirething up
+
+    wirething start host
+    wirething start peer
+
+    wirething wait
 }
 
 main
