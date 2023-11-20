@@ -126,6 +126,9 @@ function wg_open_peers() {
 function wg_interface() {
     action="${1}" && shift
     case "${action}" in
+        protocol)
+            echo "udp"
+            ;;
         open)
             [ "${WG_INTERFACE}" != "" ] && return 0
 
@@ -174,13 +177,17 @@ function wg_interface() {
 
 function udphole_punch() {
     action="${1}" && shift
+    protocol="udp"
     case "${action}" in
+        protocol)
+            echo "${protocol}"
+            ;;
         open)
-            exec 100<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT}
+            exec 100<>/dev/${protocol}/${UDPHOLE_HOST}/${UDPHOLE_PORT}
             echo "" >&100
             ;;
         port)
-            lsof -R -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" \
+            lsof -R -P -n -i "${protocol}@${UDPHOLE_HOST}:${UDPHOLE_PORT}" \
                 | grep " $$ " | head -n 1 \
                 | tr -s " " | sed "s,->, ," | cut -f 10 -d " " \
                 | sed "s,.*:,,"
@@ -370,6 +377,11 @@ function wt_peer_start() {
 
 function wt_open() {
     trap wt_close EXIT
+
+    [ "$(punch protocol)" == "$(interface protocol)" ] \
+        && echo "ERROR: Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ" \
+        && exit 1
+
     interface open
 }
 
