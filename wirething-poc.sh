@@ -27,10 +27,13 @@ case "${WT_INTERFACE?Variable not set, options: wg}" in
             WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
             
             WG_TUN_NAME_FILE="/var/run/wireguard/$(uuidgen).wirething"
-
             case "${OS}" in
                 Darwin)
                     WG_TUN_NAME="utun"
+                    ;;
+                Linux)
+                    WG_TUN_NAME="wt0"
+                    echo "${WG_TUN_NAME}" > "${WG_TUN_NAME_FILE}"
                     ;;
                 *)
                     echo "ERROR: OS not supported *${OS}*" \
