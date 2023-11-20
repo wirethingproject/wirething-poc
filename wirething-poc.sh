@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 
+# log
+
+function log_date() {
+    date -Iseconds
+}
+
+function info() {
+    echo "$(log_date) INFO ${@}" > /dev/stderr
+}
+
+function error() {
+    echo "$(log_date) ERROR ${@}" > /dev/stderr
+}
+
+function die() {
+    error "${@}" && exit 1
+}
+
 # params
     
 OS="$(uname -s)"
@@ -30,8 +48,7 @@ case "${WT_INTERFACE_TYPE}" in
         fi
         ;;
     *)
-        echo "ERROR: Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg" \
-            && exit 1
+        die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
 esac
 
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
@@ -41,8 +58,7 @@ case "${WT_PUNCH_TYPE}" in
         UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
         ;;
     *)
-        echo "ERROR: Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole" \
-            && exit 1
+        die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
 esac
 
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
@@ -51,13 +67,11 @@ case "${WT_PUBSUB_TYPE}" in
         NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
         ;;
     *)
-        echo "ERROR: Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy" \
-            && exit 1
+        die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
 esac
 
 [ "$(id -u)" != "0" ] \
-    && echo "ERROR: Not a root user" \
-    && exit 1
+    && die "Not a root user"
 
 umask 077
 
@@ -75,14 +89,12 @@ case "${WT_INTERFACE_TYPE}" in
                     echo "${WG_TUN_NAME}" > "${WG_TUN_NAME_FILE}"
                     ;;
                 *)
-                    echo "ERROR: OS not supported *${OS}*" \
-                    exit 1
+                    die "OS not supported *${OS}*"
             esac
         fi
         ;;
     *)
-        echo "ERROR: Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg" \
-            && exit 1
+        die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
 esac
 
 # hacks
@@ -102,8 +114,7 @@ alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
 
 function wg_open_host() {
     [ ! -f "${WG_HOST_PRIVATE_KEY_FILE}" ] \
-        && echo "ERROR: File WG_HOST_PRIVATE_KEY_FILE not found *${WG_HOST_PRIVATE_KEY_FILE}*" \
-        && exit 1
+        && die "File WG_HOST_PRIVATE_KEY_FILE not found *${WG_HOST_PRIVATE_KEY_FILE}*"
 
     wg set "${WG_INTERFACE}" private-key "${WG_HOST_PRIVATE_KEY_FILE}"
 }
@@ -112,8 +123,7 @@ function wg_open_peers() {
     for wg_peer_public_key_file in ${WG_PEER_PUBLIC_KEY_FILE_LIST}
     do
         [ ! -f "${wg_peer_public_key_file}" ] \
-            && echo "ERROR: File in WG_PEER_PUBLIC_KEY_FILE_LIST not found *${wg_peer_public_key_file}*" \
-            && exit 1
+            && die "File in WG_PEER_PUBLIC_KEY_FILE_LIST not found *${wg_peer_public_key_file}*"
 
         peer_public_key="$(cat "${wg_peer_public_key_file}")"
         wg set "${WG_INTERFACE}" \
@@ -238,25 +248,25 @@ function log_date() {
 }
 
 function log_punch() {
-    echo "$(log_date) punch: ${host_endpoint} -> ${host_port}"
+    info "punch: ${host_endpoint} -> ${host_port}"
 }
 
 function log_set_host_port() {
-    echo "$(log_date) set_host_port ${host_id::4}...: ${host_port}" > /dev/stderr
+    info "set_host_port ${host_id::4}...: ${host_port}"
 }
 
 function log_set_peer_endpoint() {
-    echo "$(log_date) set_peer_endpoint ${peer_id::4}...: ${peer_endpoint}" > /dev/stderr
+    info "set_peer_endpoint ${peer_id::4}...: ${peer_endpoint}"
 }
 
 function log_push_host_endpoint() {
-    echo "$(log_date) push_host_endpoint ${host_id::4}... -> ${topic::4}...: ${host_endpoint}" > /dev/stderr
+    info "push_host_endpoint ${host_id::4}... -> ${topic::4}...: ${host_endpoint}"
 }
 
 function log_pull_peer_endpoint() {
     while read peer_endpoint
     do
-        echo "$(log_date) pull_peer_endpoint ${topic::4}... -> ${peer_id::4}...: ${peer_endpoint}" > /dev/stderr
+        info "pull_peer_endpoint ${topic::4}... -> ${peer_id::4}...: ${peer_endpoint}"
         echo "${peer_endpoint}"
     done
 }
@@ -370,8 +380,7 @@ function wt_open() {
     trap wt_close EXIT
 
     [ "$(punch protocol)" != "$(interface protocol)" ] \
-        && echo "ERROR: Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ" \
-        && exit 1
+        && die "Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ"
 
     interface open
 }
