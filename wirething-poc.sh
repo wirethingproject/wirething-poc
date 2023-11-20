@@ -371,7 +371,7 @@ function wt_open() {
 
 function wt_close() {
     echo
-    interface clean
+    interface close
     kill 0
 }
 
