@@ -36,15 +36,6 @@ WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
 case "${WT_INTERFACE_TYPE}" in
     wg)
-        WG_INTERFACE="${WG_INTERFACE:-}"
-        if [ "${WG_INTERFACE}" == "" ]
-        then
-            WG_HOST_PRIVATE_KEY_FILE="${WG_HOST_PRIVATE_KEY_FILE?Variable not set}"
-            WG_PEER_PUBLIC_KEY_FILE_LIST="${WG_PEER_PUBLIC_KEY_FILE_LIST?Variable not set}"
-
-            WG_USERSPACE="${WG_USERSPACE:-wireguard-go}"
-            WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
-        fi
         ;;
     *)
         die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
@@ -53,8 +44,6 @@ esac
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
 case "${WT_PUNCH_TYPE}" in
     udphole)
-        UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.fly.dev}"
-        UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
         ;;
     *)
         die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
@@ -63,7 +52,6 @@ esac
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 case "${WT_PUBSUB_TYPE}" in
     ntfy)
-        NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
         ;;
     *)
         die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
@@ -72,7 +60,6 @@ esac
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-basic}"
 case "${WT_TOPIC_TYPE}" in
     basic)
-        WT_BASIC_TOPIC_TAG="${WT_BASIC_TOPIC_TAG:-wirething}"
         ;;
     *)
         die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: basic"
@@ -85,21 +72,6 @@ umask 077
 
 case "${WT_INTERFACE_TYPE}" in
     wg)
-        if [ "${WG_INTERFACE}" == "" ]
-        then
-            WG_TUN_NAME_FILE="/var/run/wireguard/$(uuidgen).wirething"
-            case "${OS}" in
-                Darwin)
-                    WG_TUN_NAME="utun"
-                    ;;
-                Linux)
-                    WG_TUN_NAME="wt0$(basename "${WG_TUN_NAME_FILE}" | cut -f 1 -d -)"
-                    echo "${WG_TUN_NAME}" > "${WG_TUN_NAME_FILE}"
-                    ;;
-                *)
-                    die "OS not supported *${OS}*"
-            esac
-        fi
         ;;
     *)
         die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
@@ -111,9 +83,6 @@ shopt -s expand_aliases
 
 alias sha256sum='sha256sum | cut -f 1 -d " "'
 
-[ "${WG_USERSPACE}" != "" ] \
-    && alias wireguard-us="${WG_USERSPACE}"
-
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
 alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
@@ -121,14 +90,34 @@ alias topic="${WT_TOPIC_TYPE}_topic"
 
 # wireguard
 
-function wg_open_host() {
+function wg_up_interface() {
+    case "${OS}" in
+        Darwin)
+            WG_TUN_NAME_FILE="$(mktemp -t wirething)"
+            LOG_LEVEL="${WG_LOG_LEVEL}" WG_TUN_NAME_FILE="${WG_TUN_NAME_FILE}" \
+                "${WG_USERSPACE}" "utun"
+            WG_TUN_NAME="$(cat "${WG_TUN_NAME_FILE}")"
+            rm -f "${WG_TUN_NAME_FILE}"
+            ;;
+        Linux)
+            WG_TUN_NAME="wt0$(basename "$(uuidgen)" | cut -f 1 -d "-")"
+            LOG_LEVEL="${WG_LOG_LEVEL}" "${WG_USERSPACE}" "${WG_TUN_NAME}"
+            ;;
+        *)
+            die "OS not supported *${OS}*"
+    esac
+
+    WG_INTERFACE="${WG_TUN_NAME}"
+}
+
+function wg_up_host() {
     [ ! -f "${WG_HOST_PRIVATE_KEY_FILE}" ] \
         && die "File WG_HOST_PRIVATE_KEY_FILE not found *${WG_HOST_PRIVATE_KEY_FILE}*"
 
     wg set "${WG_INTERFACE}" private-key "${WG_HOST_PRIVATE_KEY_FILE}"
 }
 
-function wg_open_peers() {
+function wg_up_peers() {
     for wg_peer_public_key_file in ${WG_PEER_PUBLIC_KEY_FILE_LIST}
     do
         [ ! -f "${wg_peer_public_key_file}" ] \
@@ -148,19 +137,24 @@ function wg_interface() {
         protocol)
             echo "udp"
             ;;
-        open)
+        init)
+            WG_INTERFACE="${WG_INTERFACE:-}"
             [ "${WG_INTERFACE}" != "" ] && return 0
 
-            LOG_LEVEL="${WG_LOG_LEVEL}" WG_TUN_NAME_FILE="${WG_TUN_NAME_FILE}" \
-                wireguard-us ${WG_TUN_NAME}
+            WG_HOST_PRIVATE_KEY_FILE="${WG_HOST_PRIVATE_KEY_FILE?Variable not set}"
+            WG_PEER_PUBLIC_KEY_FILE_LIST="${WG_PEER_PUBLIC_KEY_FILE_LIST?Variable not set}"
 
-            WG_INTERFACE="$(cat "${WG_TUN_NAME_FILE}")"
-
-            wg_open_host
-            wg_open_peers
+            WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
+            WG_USERSPACE="${WG_USERSPACE:-wireguard-go}"
             ;;
-        close)
-            rm -vf "${WG_TUN_NAME_FILE}"
+        up)
+            [ "${WG_INTERFACE}" != "" ] && return 0
+
+            wg_up_interface
+            wg_up_host
+            wg_up_peers
+            ;;
+        down)
             ;;
         get)
             param="${1}" && shift
@@ -201,7 +195,11 @@ function udphole_punch() {
         protocol)
             echo "${protocol}"
             ;;
-        open)
+        init)
+            UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.fly.dev}"
+            UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
+            ;;
+        up)
             exec 100<>/dev/${protocol}/${UDPHOLE_HOST}/${UDPHOLE_PORT}
             echo "" >&100
             ;;
@@ -214,7 +212,7 @@ function udphole_punch() {
         endpoint)
             head -n 1 <&100
             ;;
-        close)
+        down)
             exec 100<&-
             exec 100>&-
             ;;
@@ -236,6 +234,9 @@ function ntfy_pull_filter() {
 function ntfy_pubsub() {
     action="${1}" && shift
     case "${action}" in
+        init)
+            NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+            ;;
         push)
             topic="${1}" && shift
             host_endpoint="${1}" && shift
@@ -257,20 +258,26 @@ function basic_topic_timestamp() {
     echo -n "$((${epoch} / 60 / 60))"
 }
 
-function basic_topic() {
-    action="${1}" && shift
-
+function basic_topic_generate_values() {
     tag_hash="$(echo -n ${WT_BASIC_TOPIC_TAG} | sha256sum)"
     timestamp_hash="$(basic_topic_timestamp | sha256sum)"
 
     host_id_hash="$(echo -n "${host_id}" | sha256sum)"
     peer_id_hash="$(echo -n "${peer_id}" | sha256sum)"
+}
 
+function basic_topic() {
+    action="${1}" && shift
     case "${action}" in
+        init)
+            WT_BASIC_TOPIC_TAG="${WT_BASIC_TOPIC_TAG:-wirething}"
+            ;;
         push)
+            basic_topic_generate_values
             echo -n "${tag_hash}:${timestamp_hash}:${host_id_hash}:${peer_id_hash}" | sha256sum
             ;;
         pull)
+            basic_topic_generate_values
             echo -n "${tag_hash}:${timestamp_hash}:${peer_id_hash}:${host_id_hash}" | sha256sum
             ;;
     esac
@@ -305,13 +312,13 @@ function log_pull_peer_endpoint() {
 # wirething host
 
 function wt_punch() {
-    punch open
+    punch up
 
     host_port="$(punch port)"
     host_endpoint="$(punch endpoint)"
     log_punch
 
-    punch close
+    punch down
 }
 
 function wt_set_host() {
@@ -381,25 +388,32 @@ function wt_peer_start() {
 
 # wirething main
 
-function wt_open() {
-    trap wt_close EXIT
-
+function wt_init() {
     [ "$(punch protocol)" != "$(interface protocol)" ] \
         && die "Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ"
 
-    interface open
+    interface init
+    punch init
+    pubsub init
+    topic init
 }
 
-function wt_close() {
+function wt_up() {
+    trap wt_down EXIT
+    interface up
+}
+
+function wt_down() {
     echo
-    interface close
+    interface down
     kill 0
 }
 
 # main
 
 function main() {
-    wt_open
+    wt_init
+    wt_up
     wt_peer_start
     wt_host_start
 
