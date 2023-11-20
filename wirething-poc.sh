@@ -16,8 +16,8 @@ WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
 WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
 WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
 
-WT_INTERFACE="${WT_INTERFACE:-wg}"
-case "${WT_INTERFACE}" in
+WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
+case "${WT_INTERFACE_TYPE}" in
     wg)
         WG_INTERFACE="${WG_INTERFACE:-}"
         if [ "${WG_INTERFACE}" == "" ]
@@ -30,28 +30,28 @@ case "${WT_INTERFACE}" in
         fi
         ;;
     *)
-        echo "ERROR: Invalid interface type *${WT_INTERFACE}*, options: wg" \
+        echo "ERROR: Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg" \
             && exit 1
 esac
 
-WT_PUNCH="${WT_PUNCH:-udphole}"
-case "${WT_PUNCH}" in
+WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
+case "${WT_PUNCH_TYPE}" in
     udphole)
         UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.fly.dev}"
         UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
         ;;
     *)
-        echo "ERROR: Invalid punch type *${WT_PUNCH}*, options: udphole" \
+        echo "ERROR: Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole" \
             && exit 1
 esac
 
-WT_PUBSUB="${WT_PUBSUB:-ntfy}"
-case "${WT_PUBSUB}" in
+WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
+case "${WT_PUBSUB_TYPE}" in
     ntfy)
         NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
         ;;
     *)
-        echo "ERROR: Invalid punch type *${WT_PUBSUB}*, options: ntfy" \
+        echo "ERROR: Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy" \
             && exit 1
 esac
 
@@ -61,7 +61,7 @@ esac
 
 umask 077
 
-case "${WT_INTERFACE}" in
+case "${WT_INTERFACE_TYPE}" in
     wg)
         if [ "${WG_INTERFACE}" == "" ]
         then
@@ -81,7 +81,7 @@ case "${WT_INTERFACE}" in
         fi
         ;;
     *)
-        echo "ERROR: Invalid interface type *${WT_INTERFACE}*, options: wg" \
+        echo "ERROR: Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg" \
             && exit 1
 esac
 
@@ -94,15 +94,15 @@ alias sha256sum='sha256sum | cut -f 1 -d " "'
 [ "${WG_USERSPACE}" != "" ] \
     && alias wireguard-us="${WG_USERSPACE}"
 
-alias interface="${WT_INTERFACE}_interface"
-alias punch="${WT_PUNCH}_punch"
-alias pubsub="${WT_PUBSUB}_pubsub"
+alias interface="${WT_INTERFACE_TYPE}_interface"
+alias punch="${WT_PUNCH_TYPE}_punch"
+alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
 
 # wireguard
 
 function wg_open_host() {
     [ ! -f "${WG_HOST_PRIVATE_KEY_FILE}" ] \
-        && echo "ERROR: File not found *${WG_HOST_PRIVATE_KEY_FILE}*" \
+        && echo "ERROR: File WG_HOST_PRIVATE_KEY_FILE not found *${WG_HOST_PRIVATE_KEY_FILE}*" \
         && exit 1
 
     wg set "${WG_INTERFACE}" private-key "${WG_HOST_PRIVATE_KEY_FILE}"
@@ -112,7 +112,7 @@ function wg_open_peers() {
     for wg_peer_public_key_file in ${WG_PEER_PUBLIC_KEY_FILE_LIST}
     do
         [ ! -f "${wg_peer_public_key_file}" ] \
-            && echo "ERROR: File not found *${wg_peer_public_key_file}*" \
+            && echo "ERROR: File in WG_PEER_PUBLIC_KEY_FILE_LIST not found *${wg_peer_public_key_file}*" \
             && exit 1
 
         peer_public_key="$(cat "${wg_peer_public_key_file}")"
