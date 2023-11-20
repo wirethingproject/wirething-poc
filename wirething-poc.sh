@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+shopt -s expand_aliases
+
+alias sha256sum='sha256sum | cut -f 1 -d " "'
+
 # log
 
 function log_date() {
@@ -17,76 +21,6 @@ function error() {
 function die() {
     error "${@}" && exit 1
 }
-
-# params
-
-OS="$(uname -s)"
-
-WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
-WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
-WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
-WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
-
-WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
-WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
-
-WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
-WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
-
-WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
-case "${WT_INTERFACE_TYPE}" in
-    wg)
-        ;;
-    *)
-        die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
-esac
-
-WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
-case "${WT_PUNCH_TYPE}" in
-    udphole)
-        ;;
-    *)
-        die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
-esac
-
-WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
-case "${WT_PUBSUB_TYPE}" in
-    ntfy)
-        ;;
-    *)
-        die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
-esac
-
-WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-basic}"
-case "${WT_TOPIC_TYPE}" in
-    basic)
-        ;;
-    *)
-        die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: basic"
-esac
-
-[ "$(id -u)" != "0" ] \
-    && die "Not a root user"
-
-umask 077
-
-case "${WT_INTERFACE_TYPE}" in
-    wg)
-        ;;
-    *)
-        die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
-esac
-
-# hacks
-
-shopt -s expand_aliases
-
-alias sha256sum='sha256sum | cut -f 1 -d " "'
-
-alias interface="${WT_INTERFACE_TYPE}_interface"
-alias punch="${WT_PUNCH_TYPE}_punch"
-alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
-alias topic="${WT_TOPIC_TYPE}_topic"
 
 # wireguard
 
@@ -283,6 +217,23 @@ function basic_topic() {
     esac
 }
 
+# wirething hacks
+
+WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
+WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
+WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
+WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-basic}"
+
+alias interface="${WT_INTERFACE_TYPE}_interface"
+alias punch="${WT_PUNCH_TYPE}_punch"
+alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
+alias topic="${WT_TOPIC_TYPE}_topic"
+
+interface "" || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
+punch ""     || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
+pubsub ""    || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
+topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: basic"
+
 # wirething log
 
 function log_punch() {
@@ -389,6 +340,19 @@ function wt_peer_start() {
 # wirething main
 
 function wt_init() {
+    OS="$(uname -s)"
+
+    WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
+    WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
+    WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
+    WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
+
+    WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
+    WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
+
+    WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
+    WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
+
     [ "$(punch protocol)" != "$(interface protocol)" ] \
         && die "Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ"
 
@@ -419,5 +383,11 @@ function main() {
 
     wait $(jobs -p)
 }
+
+[ "$(id -u)" != "0" ] \
+    && die "Not a root user"
+
+umask 077
+
 
 main
