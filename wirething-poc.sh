@@ -380,10 +380,9 @@ function wirething() {
 
             case "${param}" in
                 host)
-
                     wt_host_loop &
                     ;;
-                peer)
+                peers)
                     for peer_id in ${peer_id_list}
                     do
                         wt_peer_loop &
@@ -406,7 +405,7 @@ function main() {
     wirething up
 
     wirething start host
-    wirething start peer
+    wirething start peers
 
     wirething wait
 }
