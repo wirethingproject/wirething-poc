@@ -205,31 +205,31 @@ function ntfy_pubsub() {
 
 # basic topic
 
-function basic_topic_timestamp() {
+function default_topic_timestamp() {
     epoch="$(date -u "+%s")"
     echo -n "$((${epoch} / 60 / 60))"
 }
 
-function basic_topic_generate_values() {
-    tag_hash="$(echo -n ${WT_BASIC_TOPIC_TAG} | sha256sum)"
-    timestamp_hash="$(basic_topic_timestamp | sha256sum)"
+function default_topic_generate_values() {
+    tag_hash="$(echo -n ${WT_DEFAULT_TOPIC_TAG} | sha256sum)"
+    timestamp_hash="$(default_topic_timestamp | sha256sum)"
 
     host_id_hash="$(echo -n "${host_id}" | sha256sum)"
     peer_id_hash="$(echo -n "${peer_id}" | sha256sum)"
 }
 
-function basic_topic() {
+function default_topic() {
     action="${1}" && shift
     case "${action}" in
         init)
-            WT_BASIC_TOPIC_TAG="${WT_BASIC_TOPIC_TAG:-wirething}"
+            WT_DEFAULT_TOPIC_TAG="${WT_DEFAULT_TOPIC_TAG:-wirething}"
             ;;
         push)
-            basic_topic_generate_values
+            default_topic_generate_values
             echo -n "${tag_hash}:${timestamp_hash}:${host_id_hash}:${peer_id_hash}" | sha256sum
             ;;
         pull)
-            basic_topic_generate_values
+            default_topic_generate_values
             echo -n "${tag_hash}:${timestamp_hash}:${peer_id_hash}:${host_id_hash}" | sha256sum
             ;;
     esac
@@ -240,7 +240,7 @@ function basic_topic() {
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
-WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-basic}"
+WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-default}"
 
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
@@ -250,11 +250,11 @@ alias topic="${WT_TOPIC_TYPE}_topic"
 interface "" || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
 punch ""     || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
 pubsub ""    || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
-topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: basic"
+topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: default"
 
 # wirething host
 
-function basic_host_punch() {
+function default_host_punch() {
     punch up
 
     host_port="$(punch port)"
@@ -264,12 +264,12 @@ function basic_host_punch() {
     punch down
 }
 
-function basic_host_set_port() {
+function default_host_set_port() {
     info "${short_host_id} set_host_port ${host_port}"
     interface set host_port "${host_port}"
 }
 
-function basic_host_push_endpoint() {
+function default_host_push_endpoint() {
     topic="$(topic push)"
     short_topic="push:${topic::8}"
 
@@ -277,7 +277,7 @@ function basic_host_push_endpoint() {
     pubsub push "${topic}" "${host_endpoint}"
 }
 
-function basic_host_loop() {
+function default_host_loop() {
     short_host_id="host:${host_id::8}"
 
     sleep "${WT_HOST_START_DELAY}"
@@ -285,13 +285,13 @@ function basic_host_loop() {
     info "${short_host_id} host_loop started"
     while true
     do
-        basic_host_punch
-        basic_host_set_port
+        default_host_punch
+        default_host_set_port
 
         for peer_id in ${peer_id_list}
         do
             short_peer_id="peer:${peer_id::8}"
-            basic_host_push_endpoint
+            default_host_push_endpoint
         done
 
         sleep "${WT_HOST_INTERVAL}"
@@ -301,7 +301,7 @@ function basic_host_loop() {
 
 # wirething peer
 
-function basic_peer_set_endpoint() {
+function default_peer_set_endpoint() {
     while read peer_endpoint
     do
         info "${short_peer_id} set_peer_endpoint ${peer_endpoint}"
@@ -309,7 +309,7 @@ function basic_peer_set_endpoint() {
     done
 }
 
-function basic_peer_pull() {
+function default_peer_pull() {
     topic="$(topic pull)"
     short_topic="pull:${topic::8}"
 
@@ -320,7 +320,7 @@ function basic_peer_pull() {
     done
 }
 
-function basic_peer_loop() {
+function default_peer_loop() {
     short_host_id="host:${host_id::8}"
     short_peer_id="peer:${peer_id::8}"
 
@@ -329,7 +329,7 @@ function basic_peer_loop() {
     info "${short_peer_id} peer_loop started"
     while true
     do
-        basic_peer_pull | basic_peer_set_endpoint
+        default_peer_pull | default_peer_set_endpoint
         sleep "${WT_PEER_INTERVAL}"
     done
     info "${short_peer_id} peer_loop stopped"
@@ -383,12 +383,12 @@ function wirething() {
 
             case "${param}" in
                 host)
-                    basic_host_loop &
+                    default_host_loop &
                     ;;
                 peers)
                     for peer_id in ${peer_id_list}
                     do
-                        basic_peer_loop &
+                        default_peer_loop &
                     done
                     ;;
             esac
