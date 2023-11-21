@@ -13,7 +13,6 @@ export OS="$(uname -s)"
 export PGID="${PGID:-${PPID}}"
 
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
-
 auto_su() {
     self="$(readlink -f "${BASH_SOURCE[0]}")"
     su_prompt="*${self##*/}* must be run as *root*. Please enter the password for *%u* to continue: "
