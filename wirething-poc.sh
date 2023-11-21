@@ -7,6 +7,8 @@ shopt -s expand_aliases
 alias sha256sum='sha256sum | cut -f 1 -d " "'
 
 export LC_ALL=C
+export OS="$(uname -s)"
+export PGID="${PGID:-${PPID}}"
 
 umask 077
 
@@ -14,7 +16,6 @@ umask 077
 
 auto_su() {
     self="$(readlink -f "${BASH_SOURCE[0]}")"
-
     su_prompt="*${self##*/}* must be run as *root*. Please enter the password for *%u* to continue: "
 
 	[[ ${UID} == 0 ]] \
@@ -39,9 +40,13 @@ function die() {
     error "${@}" && exit 1
 }
 
+function short() {
+    echo "${1::8}"
+}
+
 # wireguard
 
-function wg_up_interface() {
+function wg_up_userspace() {
     case "${OS}" in
         Darwin)
             WG_TUN_NAME_FILE="$(mktemp -t wirething)"
@@ -77,8 +82,8 @@ function wg_up_peers() {
         peer_public_key="$(cat "${wg_peer_public_key_file}")"
         wg set "${WG_INTERFACE}" \
             peer "${peer_public_key}" \
-            persistent-keepalive "${WT_PERSISTENT_KEEPALIVE}" \
-            allowed-ips "${WT_ALLOWED_IPS}"
+            persistent-keepalive "${WG_PERSISTENT_KEEPALIVE}" \
+            allowed-ips "${WG_ALLOWED_IPS}"
     done
 }
 
@@ -89,6 +94,7 @@ function wg_interface() {
             echo "udp"
             ;;
         init)
+            info "wg_interface init"
             WG_INTERFACE="${WG_INTERFACE:-}"
             [ "${WG_INTERFACE}" != "" ] && return 0
 
@@ -97,24 +103,36 @@ function wg_interface() {
 
             WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
             WG_USERSPACE="${WG_USERSPACE:-wireguard-go}"
+
+            WG_ALLOWED_IPS="${WG_ALLOWED_IPS:-100.64.0.0/24}"
+            WG_PERSISTENT_KEEPALIVE="${WG_PERSISTENT_KEEPALIVE:-25}"
             ;;
         up)
             [ "${WG_INTERFACE}" != "" ] && return 0
+            info "wg_interface up"
 
-            wg_up_interface
+            wg_up_userspace
             wg_up_host
             wg_up_peers
-            ;;
-        down)
             ;;
         get)
             param="${1}" && shift
             case "${param}" in
                 host_id)
-                    wg show "${WG_INTERFACE}" public-key
+                    wg show "${WG_INTERFACE}" public-key | {
+                        read host_id
+                        info "wg_interface get host_id $(short ${host_id})"
+                        echo "${host_id}"
+                    }
                     ;;
                 peers_id_list)
-                    wg show "${WG_INTERFACE}" peers
+                    wg show "${WG_INTERFACE}" peers | {
+                        while read peer_id
+                        do
+                            info "wg_interface get peer_id $(short ${peer_id})"
+                            echo "${peer_id}"
+                        done
+                    }
             esac
             ;;
         set)
@@ -122,11 +140,15 @@ function wg_interface() {
             case "${param}" in
                 host_port)
                     port="${1}" && shift
+
+                    info "wg_interface set host_port ${port}"
                     wg set "${WG_INTERFACE}" listen-port "${port}"
                     ;;
                 peer_endpoint)
                     peer="${1}" && shift
                     endpoint="${1}" && shift
+
+                    info "wg_interface set peer_endpoint $(short ${peer}) ${endpoint}"
                     wg set "${WG_INTERFACE}" peer "${peer}" endpoint "${endpoint}"
                     ;;
             esac
@@ -141,30 +163,60 @@ function wg_interface() {
 
 function udphole_punch() {
     action="${1}" && shift
-    protocol="udp"
     case "${action}" in
         protocol)
-            echo "${protocol}"
+            echo "udp"
             ;;
         init)
+            info "udphole_punch init"
             UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.fly.dev}"
             UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
             ;;
-        up)
+        run)
+            info "udphole_punch run"
+            udphole_punch open
+            {
+                udphole_punch get port
+                udphole_punch get endpoint
+            } | {
+                read port
+                read endpoint
+
+                udphole_punch close
+
+                echo "${port}"
+                echo "${endpoint}"
+            }
+            ;;
+        open)
+            info "udphole_punch open"
             # https://www.xmodulo.com/tcp-udp-socket-bash-shell.html
-            exec 100<>/dev/${protocol}/${UDPHOLE_HOST}/${UDPHOLE_PORT}
+            exec 100<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT}
             echo "" >&100
             ;;
-        port)
-            lsof -R -P -n -i "${protocol}@${UDPHOLE_HOST}:${UDPHOLE_PORT}" \
-                | grep " $$ " | head -n 1 \
-                | tr -s " " | sed "s,->, ," | cut -f 10 -d " " \
-                | sed "s,.*:,,"
+        get)
+            param="${1}" && shift
+            case "${param}" in
+                port)
+                    lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -g "${PGID}" \
+                        | grep -m 1 " ${PGID} " \
+                        | sed "s,.* UDP .*:\(.*\)->.*,\1," | {
+                        read port
+                        info "udphole_punch get port ${port}"
+                        echo "${port}"
+                    }
+                    ;;
+                endpoint)
+                    head -n 1 <&100 | {
+                        read endpoint
+                        info "udphole_punch get endpoint ${endpoint}"
+                        echo "${endpoint}"
+                    }
+                    ;;
+            esac
             ;;
-        endpoint)
-            head -n 1 <&100
-            ;;
-        down)
+        close)
+            info "udphole_punch close"
             exec 100<&-
             exec 100>&-
             ;;
@@ -173,63 +225,66 @@ function udphole_punch() {
 
 # ntfy
 
-function ntfy_pull_filter() {
-    while read peer_endpoint
-    do
-        if [ "${peer_endpoint}" != "" ]
-        then
-            echo "${peer_endpoint}"
-        fi
-    done
-}
-
 function ntfy_pubsub() {
     action="${1}" && shift
     case "${action}" in
         init)
+            info "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+            NTFY_PUSH_TIMEOUT="${NTFY_PUSH_TIMEOUT:-10}"
+            NTFY_PULL_TIMEOUT="${NTFY_PULL_TIMEOUT:-60}"
             ;;
         push)
             topic="${1}" && shift
             host_endpoint="${1}" && shift
-            { curl -Ns --max-time "${WT_PUSH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
+            info "ntfy_pubsub push $(short ${topic}) ${host_endpoint}"
+            { curl -Ns --max-time "${NTFY_PUSH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
                 > /dev/null
             ;;
         pull)
             topic="${1}" && shift
-            { curl -Ns --max-time "${WT_PULL_TIMEOUT}" "${NTFY_URL}/${topic}/raw" || true; } \
-                | ntfy_pull_filter
+            { curl -Ns --max-time "${NTFY_PULL_TIMEOUT}" "${NTFY_URL}/${topic}/raw" || true; } \
+                | while read peer_endpoint
+                do
+                    if [ "${peer_endpoint}" != "" ]
+                    then
+                        info "ntfy_pubsub pull $(short ${topic}) ${peer_endpoint}"
+                        echo "${peer_endpoint}"
+                    fi
+                done
             ;;
     esac
 }
 
 # basic topic
 
-function default_topic_timestamp() {
+function wirething_topic_timestamp() {
     epoch="$(date -u "+%s")"
-    echo -n "$((${epoch} / 60 / 60))"
+    echo -n "$((${epoch} / ${WT_TOPIC_TIMESTAMP_OFFSET}))"
 }
 
-function default_topic_generate_values() {
-    tag_hash="$(echo -n ${WT_DEFAULT_TOPIC_TAG} | sha256sum)"
-    timestamp_hash="$(default_topic_timestamp | sha256sum)"
+function wirething_topic_hash_values() {
+    tag_hash="$(echo -n ${WT_TOPIC_TAG} | sha256sum)"
+    timestamp_hash="$(wirething_topic_timestamp | sha256sum)"
 
     host_id_hash="$(echo -n "${host_id}" | sha256sum)"
     peer_id_hash="$(echo -n "${peer_id}" | sha256sum)"
 }
 
-function default_topic() {
+function wirething_topic() {
     action="${1}" && shift
     case "${action}" in
         init)
-            WT_DEFAULT_TOPIC_TAG="${WT_DEFAULT_TOPIC_TAG:-wirething}"
+            info "wirething_topic init"
+            WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
+            WT_TOPIC_TIMESTAMP_OFFSET="${WT_TOPIC_TIMESTAMP_OFFSET:-3600}" # 60 minutes
             ;;
         push)
-            default_topic_generate_values
+            wirething_topic_hash_values
             echo -n "${tag_hash}:${timestamp_hash}:${host_id_hash}:${peer_id_hash}" | sha256sum
             ;;
         pull)
-            default_topic_generate_values
+            wirething_topic_hash_values
             echo -n "${tag_hash}:${timestamp_hash}:${peer_id_hash}:${host_id_hash}" | sha256sum
             ;;
     esac
@@ -237,163 +292,167 @@ function default_topic() {
 
 # wirething hacks
 
+function options() {
+    set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
+}
+
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
-WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-default}"
+WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-wirething}"
 
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
 alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
 alias topic="${WT_TOPIC_TYPE}_topic"
 
-interface "" || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: wg"
-punch ""     || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: udphole"
-pubsub ""    || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: ntfy"
-topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: default"
+interface "" || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
+punch ""     || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
+pubsub ""    || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
+topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(options topic)"
 
 # wirething host
 
-function default_host_punch() {
-    punch up
-
-    host_port="$(punch port)"
-    host_endpoint="$(punch endpoint)"
-    info "${short_host_id} punch ${host_port} <- ${host_endpoint}"
-
-    punch down
-}
-
-function default_host_set_port() {
-    info "${short_host_id} set_host_port ${host_port}"
-    interface set host_port "${host_port}"
-}
-
-function default_host_push_endpoint() {
-    topic="$(topic push)"
-    short_topic="push:${topic::8}"
-
-    info "${short_host_id} push_host_endpoint ${host_endpoint} -> ${short_topic}"
-    pubsub push "${topic}" "${host_endpoint}"
-}
-
-function default_host_loop() {
-    short_host_id="host:${host_id::8}"
-
+function wirething_host_loop() {
     sleep "${WT_HOST_START_DELAY}"
 
-    info "${short_host_id} host_loop started"
     while true
     do
-        default_host_punch
-        default_host_set_port
+        punch run | {
+            read host_port
+            read host_endpoint
 
-        for peer_id in ${peer_id_list}
-        do
-            short_peer_id="peer:${peer_id::8}"
-            default_host_push_endpoint
-        done
+            interface set host_port "${host_port}"
+
+            for peer_id in ${peer_id_list}
+            do
+                pubsub push "$(topic push)" "${host_endpoint}"
+            done
+        }
 
         sleep "${WT_HOST_INTERVAL}"
     done
-    info "${short_host_id} host_loop stopped"
+}
+
+function wirething_host() {
+    action="${1}" && shift
+    case "${action}" in
+        init)
+            WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
+            WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
+            ;;
+        start)
+            info "wirething_host start $(short "${host_id}")"
+            wirething_host_loop &
+            ;;
+    esac
 }
 
 # wirething peer
 
-function default_peer_set_endpoint() {
-    while read peer_endpoint
-    do
-        info "${short_peer_id} set_peer_endpoint ${peer_endpoint}"
-        interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
-    done
-}
-
-function default_peer_pull() {
-    topic="$(topic pull)"
-    short_topic="pull:${topic::8}"
-
-    pubsub pull "${topic}" | while read peer_endpoint
-    do
-        info "${short_peer_id} pull_peer_endpoint ${peer_endpoint} <- ${short_topic}"
-        echo "${peer_endpoint}"
-    done
-}
-
-function default_peer_loop() {
-    short_host_id="host:${host_id::8}"
-    short_peer_id="peer:${peer_id::8}"
-
+function wirething_peer_loop() {
     sleep "${WT_PEER_START_DELAY}"
 
-    info "${short_peer_id} peer_loop started"
     while true
     do
-        default_peer_pull | default_peer_set_endpoint
+        pubsub pull "$(topic pull)" | {
+            while read peer_endpoint
+            do
+                interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
+            done
+        }
+
         sleep "${WT_PEER_INTERVAL}"
     done
-    info "${short_peer_id} peer_loop stopped"
 }
 
+function wirething_peer() {
+    action="${1}" && shift
+    case "${action}" in
+        init)
+            WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
+            WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
+            ;;
+        start)
+            info "wirething_peer start $(short "${peer_id}")"
+            wirething_peer_loop &
+            ;;
+    esac
+}
+
+# more wirething hacks
+
+WT_HOST_TYPE="${WT_HOST_TYPE:-wirething}"
+WT_PEER_TYPE="${WT_PEER_TYPE:-wirething}"
+
+alias host="${WT_HOST_TYPE}_host"
+alias peer="${WT_PEER_TYPE}_peer"
+
+host ""     || die "Invalid WT_HOST_TYPE *${WT_HOST_TYPE}*, options: $(options host)"
+peer ""     || die "Invalid WT_PEER_TYPE *${WT_PEER_TYPE}*, options: $(options peer)"
+
 # wirething main
+
+wt_type_list=(
+    interface
+    punch
+    pubsub
+    topic
+    host
+    peer
+)
+
+function wt_get_alias() {
+    alias ${i} | cut -f 2 -d "'"
+}
+
+function wt_type_for_each() {
+    for i in "${wt_type_list[@]}"; do
+        "$(wt_get_alias $i)" "${1}"
+    done
+}
+
+function wt_validate_protocol() {
+    punch="${1}" && shift
+    interface="${1}" && shift
+    [ "${punch}" != "${interface}" ] \
+        && die "Punch *${WT_PUNCH_TYPE}=${punch}* and interface *${WT_INTERFACE_TYPE}=${interface}* protocol differ" \
+        || true
+}
 
 function wirething() {
     action="${1}" && shift
     case "${action}" in
         init)
-            OS="$(uname -s)"
-
-            WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
-            WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
-            WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
-            WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
-
-            WT_PUSH_TIMEOUT="${WT_PUSH_TIMEOUT:-10}"
-            WT_PULL_TIMEOUT="${WT_PULL_TIMEOUT:-60}"
-
-            WT_ALLOWED_IPS="${WT_ALLOWED_IPS:-100.64.0.0/24}"
-            WT_PERSISTENT_KEEPALIVE="${WT_PERSISTENT_KEEPALIVE:-25}"
-
-            [ "$(punch protocol)" != "$(interface protocol)" ] \
-                && die "Punch *${WT_PUNCH_TYPE}=$(punch protocol)* and interface *${WT_INTERFACE_TYPE}=$(interface protocol)* protocol differ"
-
-            interface init
-            punch init
-            pubsub init
-            topic init
-
-            info "init done"
+            info "wirething init"
+            wt_type_for_each init
+            wt_validate_protocol "$(punch protocol)" "$(interface protocol)"
             ;;
         up)
+            info "wirething up"
+            wt_type_for_each up
             trap "wirething down" EXIT
-            interface up
-
-            info "up done"
             ;;
         down)
-            echo
-            interface down
-            info "down done"
+            echo > /dev/stderr
+            info "wirething down"
+            wt_type_for_each down
             kill 0
             ;;
         start)
-            param="${1}" && shift
+            info "wirething start"
             host_id="$(interface get host_id)"
             peer_id_list="$(interface get peers_id_list)"
 
-            case "${param}" in
-                host)
-                    default_host_loop &
-                    ;;
-                peers)
-                    for peer_id in ${peer_id_list}
-                    do
-                        default_peer_loop &
-                    done
-                    ;;
-            esac
+            host start
+
+            for peer_id in ${peer_id_list}
+            do
+                peer start
+            done
             ;;
         wait)
+            info "wirething wait"
             wait $(jobs -p)
             ;;
     esac
@@ -403,13 +462,9 @@ function wirething() {
 
 function main() {
     wirething init
-
     auto_su
     wirething up
-
-    wirething start host
-    wirething start peers
-
+    wirething start
     wirething wait
 }
 
