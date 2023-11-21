@@ -6,11 +6,11 @@ set -euo pipefail
 shopt -s expand_aliases
 alias sha256sum='sha256sum | cut -f 1 -d " "'
 
+umask 077
+
 export LC_ALL=C
 export OS="$(uname -s)"
 export PGID="${PGID:-${PPID}}"
-
-umask 077
 
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
 
