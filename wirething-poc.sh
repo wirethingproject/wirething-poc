@@ -434,9 +434,11 @@ function wirething() {
         up)
             debug "wirething up"
             wt_type_for_each up
-            trap "wirething down" EXIT
+            trap "wirething down" INT TERM EXIT
             ;;
         down)
+            # Untrap to avoid infinite loops
+            trap - INT TERM EXIT
             echo > /dev/stderr
             debug "wirething down"
             wt_type_for_each down
