@@ -31,6 +31,11 @@ function info() {
     echo "$(log_date) INFO ${@}" > /dev/stderr
 }
 
+function debug() {
+    [ "${WT_LOG_LEVEL}" != "debug" ] && return 0
+    echo "$(log_date) DEBUG ${@}" > /dev/stderr
+}
+
 function error() {
     echo "$(log_date) ERROR ${@}" > /dev/stderr
 }
@@ -93,7 +98,7 @@ function wg_interface() {
             echo "udp"
             ;;
         init)
-            info "wg_interface init"
+            debug "wg_interface init"
             WG_INTERFACE="${WG_INTERFACE:-}"
             [ "${WG_INTERFACE}" != "" ] && return 0
 
@@ -108,8 +113,7 @@ function wg_interface() {
             ;;
         up)
             [ "${WG_INTERFACE}" != "" ] && return 0
-            info "wg_interface up"
-
+            debug "wg_interface up"
             wg_up_userspace
             wg_up_host
             wg_up_peers
@@ -167,12 +171,12 @@ function udphole_punch() {
             echo "udp"
             ;;
         init)
-            info "udphole_punch init"
+            debug "udphole_punch init"
             UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.fly.dev}"
             UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
             ;;
         run)
-            info "udphole_punch run"
+            debug "udphole_punch run"
             udphole_punch open
             {
                 udphole_punch get port
@@ -188,7 +192,7 @@ function udphole_punch() {
             }
             ;;
         open)
-            info "udphole_punch open"
+            debug "udphole_punch open"
             # https://www.xmodulo.com/tcp-udp-socket-bash-shell.html
             exec 100<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT}
             echo "" >&100
@@ -215,7 +219,7 @@ function udphole_punch() {
             esac
             ;;
         close)
-            info "udphole_punch close"
+            debug "udphole_punch close"
             exec 100<&-
             exec 100>&-
             ;;
@@ -228,7 +232,7 @@ function ntfy_pubsub() {
     action="${1}" && shift
     case "${action}" in
         init)
-            info "ntfy_pubsub init"
+            debug "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
             NTFY_PUSH_TIMEOUT="${NTFY_PUSH_TIMEOUT:-10}"
             NTFY_PULL_TIMEOUT="${NTFY_PULL_TIMEOUT:-60}"
@@ -265,7 +269,6 @@ function wirething_topic_timestamp() {
 function wirething_topic_hash_values() {
     tag_hash="$(echo -n ${WT_TOPIC_TAG} | sha256sum)"
     timestamp_hash="$(wirething_topic_timestamp | sha256sum)"
-
     host_id_hash="$(echo -n "${host_id}" | sha256sum)"
     peer_id_hash="$(echo -n "${peer_id}" | sha256sum)"
 }
@@ -274,7 +277,7 @@ function wirething_topic() {
     action="${1}" && shift
     case "${action}" in
         init)
-            info "wirething_topic init"
+            debug "wirething_topic init"
             WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
             WT_TOPIC_TIMESTAMP_OFFSET="${WT_TOPIC_TIMESTAMP_OFFSET:-3600}" # 60 minutes
             ;;
@@ -341,7 +344,7 @@ function wirething_host() {
             WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
             ;;
         start)
-            info "wirething_host start $(short "${host_id}")"
+            debug "wirething_host start $(short "${host_id}")"
             wirething_host_loop &
             ;;
     esac
@@ -373,7 +376,7 @@ function wirething_peer() {
             WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
             ;;
         start)
-            info "wirething_peer start $(short "${peer_id}")"
+            debug "wirething_peer start $(short "${peer_id}")"
             wirething_peer_loop &
             ;;
     esac
@@ -423,23 +426,24 @@ function wirething() {
     action="${1}" && shift
     case "${action}" in
         init)
-            info "wirething init"
+            WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
+            debug "wirething init"
             wt_type_for_each init
             wt_validate_protocol "$(punch protocol)" "$(interface protocol)"
             ;;
         up)
-            info "wirething up"
+            debug "wirething up"
             wt_type_for_each up
             trap "wirething down" EXIT
             ;;
         down)
             echo > /dev/stderr
-            info "wirething down"
+            debug "wirething down"
             wt_type_for_each down
             kill 0
             ;;
         start)
-            info "wirething start"
+            debug "wirething start"
             host_id="$(interface get host_id)"
             peer_id_list="$(interface get peers_id_list)"
 
@@ -451,7 +455,7 @@ function wirething() {
             done
             ;;
         wait)
-            info "wirething wait"
+            debug "wirething wait"
             wait $(jobs -p)
             ;;
     esac
