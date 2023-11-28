@@ -10,7 +10,6 @@ umask 077
 
 export LC_ALL=C
 export OS="$(uname -s)"
-export PGID="${PGID:-${PPID}}"
 
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
 auto_su() {
@@ -196,13 +195,15 @@ function udphole_punch() {
             # https://www.xmodulo.com/tcp-udp-socket-bash-shell.html
             exec 100<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT}
             echo "" >&100
+            UDPHOLE_OPEN_PID="${BASHPID}"
             ;;
         get)
             param="${1}" && shift
             case "${param}" in
                 port)
-                    lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -g "${PGID}" \
-                        | grep -m 1 " ${PGID} " \
+                    { lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -p "${UDPHOLE_OPEN_PID}" \
+                        || echo " ${UDPHOLE_OPEN_PID} UDP :0->"; } \
+                        | grep -m 1 " ${UDPHOLE_OPEN_PID} " \
                         | sed "s,.* UDP .*:\(.*\)->.*,\1," | {
                         read port
                         info "udphole_punch get port ${port}"
@@ -222,6 +223,7 @@ function udphole_punch() {
             debug "udphole_punch close"
             exec 100<&-
             exec 100>&-
+            unset UDPHOLE_OPEN_PID
             ;;
     esac
 }
