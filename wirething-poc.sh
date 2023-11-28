@@ -71,7 +71,7 @@ function wg_interface() {
                 host_id)
                     wg show "${WG_INTERFACE}" public-key | {
                         read host_id
-                        info "wg_interface get host_id $(short ${host_id})"
+                        info "wg_interface get host_id $(short "${host_id}")"
                         echo "${host_id}"
                     }
                     ;;
@@ -79,7 +79,7 @@ function wg_interface() {
                     wg show "${WG_INTERFACE}" peers | {
                         while read peer_id
                         do
-                            info "wg_interface get peer_id $(short ${peer_id})"
+                            info "wg_interface get peer_id $(short "${peer_id}")"
                             echo "${peer_id}"
                         done
                     }
@@ -98,7 +98,7 @@ function wg_interface() {
                     peer="${1}" && shift
                     endpoint="${1}" && shift
 
-                    info "wg_interface set peer_endpoint $(short ${peer}) ${endpoint}"
+                    info "wg_interface set peer_endpoint $(short "${peer}") ${endpoint}"
                     wg set "${WG_INTERFACE}" peer "${peer}" endpoint "${endpoint}"
                     ;;
             esac
@@ -106,8 +106,8 @@ function wg_interface() {
         status)
             wg show interfaces \
                 | grep "${WG_INTERFACE}" > /dev/null \
-                && echo "up" \
-                || echo "down"
+                    && echo "up" \
+                    || echo "down"
             ;;
     esac
 }
@@ -260,7 +260,7 @@ function udphole_punch() {
             case "${param}" in
                 port)
                     { lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -p "${UDPHOLE_OPEN_PID}" \
-                        || echo " ${UDPHOLE_OPEN_PID} UDP :0->"; } \
+                            || echo " ${UDPHOLE_OPEN_PID} UDP :0->"; } \
                         | grep -m 1 " ${UDPHOLE_OPEN_PID} " \
                         | sed "s,.* UDP .*:\(.*\)->.*,\1," | {
                         read port
@@ -300,7 +300,7 @@ function ntfy_pubsub() {
         publish)
             topic="${1}" && shift
             host_endpoint="${1}" && shift
-            info "ntfy_pubsub publish $(short ${topic}) ${host_endpoint}"
+            info "ntfy_pubsub publish $(short "${topic}") ${host_endpoint}"
             { curl -Ns --max-time "${NTFY_PUBLISH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
                 > /dev/null
             ;;
@@ -311,7 +311,7 @@ function ntfy_pubsub() {
                 do
                     if [ "${peer_endpoint}" != "" ]
                     then
-                        info "ntfy_pubsub subscribe $(short ${topic}) ${peer_endpoint}"
+                        info "ntfy_pubsub subscribe $(short "${topic}") ${peer_endpoint}"
                         echo "${peer_endpoint}"
                     fi
                 done
