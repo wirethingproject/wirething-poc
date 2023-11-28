@@ -59,6 +59,12 @@ function wg_interface() {
             debug "wg_interface init"
             WG_INTERFACE="${WG_INTERFACE:?Variable not set}"
             ;;
+        up)
+            debug "wg_interface up"
+            [ "$(wg_interface status)" == "down" ] \
+                && die "Wireguard interface *${WG_INTERFACE}* not found." \
+                || true
+            ;;
         get)
             param="${1}" && shift
             case "${param}" in
