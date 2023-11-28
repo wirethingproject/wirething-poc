@@ -288,24 +288,24 @@ function ntfy_pubsub() {
         init)
             debug "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
-            NTFY_PUSH_TIMEOUT="${NTFY_PUSH_TIMEOUT:-10}"
-            NTFY_PULL_TIMEOUT="${NTFY_PULL_TIMEOUT:-60}"
+            NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-10}"
+            NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-60}"
             ;;
-        push)
+        publish)
             topic="${1}" && shift
             host_endpoint="${1}" && shift
-            info "ntfy_pubsub push $(short ${topic}) ${host_endpoint}"
-            { curl -Ns --max-time "${NTFY_PUSH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
+            info "ntfy_pubsub publish $(short ${topic}) ${host_endpoint}"
+            { curl -Ns --max-time "${NTFY_PUBLISH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
                 > /dev/null
             ;;
-        pull)
+        subscribe)
             topic="${1}" && shift
-            { curl -Ns --max-time "${NTFY_PULL_TIMEOUT}" "${NTFY_URL}/${topic}/raw" || true; } \
+            { curl -Ns --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" "${NTFY_URL}/${topic}/raw" || true; } \
                 | while read peer_endpoint
                 do
                     if [ "${peer_endpoint}" != "" ]
                     then
-                        info "ntfy_pubsub pull $(short ${topic}) ${peer_endpoint}"
+                        info "ntfy_pubsub subscribe $(short ${topic}) ${peer_endpoint}"
                         echo "${peer_endpoint}"
                     fi
                 done
@@ -335,11 +335,11 @@ function wirething_topic() {
             WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
             WT_TOPIC_TIMESTAMP_OFFSET="${WT_TOPIC_TIMESTAMP_OFFSET:-3600}" # 60 minutes
             ;;
-        push)
+        publish)
             wirething_topic_hash_values
             echo -n "${tag_hash}:${timestamp_hash}:${host_id_hash}:${peer_id_hash}" | sha256sum
             ;;
-        pull)
+        subscribe)
             wirething_topic_hash_values
             echo -n "${tag_hash}:${timestamp_hash}:${peer_id_hash}:${host_id_hash}" | sha256sum
             ;;
@@ -382,7 +382,7 @@ function wirething_host_loop() {
 
             for peer_id in ${peer_id_list}
             do
-                pubsub push "$(topic push)" "${host_endpoint}"
+                pubsub publish "$(topic publish)" "${host_endpoint}"
             done
         }
 
@@ -411,7 +411,7 @@ function wirething_peer_loop() {
 
     while true
     do
-        pubsub pull "$(topic pull)" | {
+        pubsub subscribe "$(topic subscribe)" | {
             while read peer_endpoint
             do
                 interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
