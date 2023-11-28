@@ -49,47 +49,6 @@ function short() {
 
 # wireguard
 
-function wg_up_userspace() {
-    case "${OS}" in
-        Darwin)
-            WG_TUN_NAME_FILE="$(mktemp -t wirething)"
-            LOG_LEVEL="${WG_LOG_LEVEL}" WG_TUN_NAME_FILE="${WG_TUN_NAME_FILE}" \
-                "${WG_USERSPACE}" "utun"
-            WG_TUN_NAME="$(cat "${WG_TUN_NAME_FILE}")"
-            rm -f "${WG_TUN_NAME_FILE}"
-            ;;
-        Linux)
-            WG_TUN_NAME="wt0$(basename "$(uuidgen)" | cut -f 1 -d "-")"
-            LOG_LEVEL="${WG_LOG_LEVEL}" "${WG_USERSPACE}" "${WG_TUN_NAME}"
-            ;;
-        *)
-            die "OS not supported *${OS}*"
-    esac
-
-    WG_INTERFACE="${WG_TUN_NAME}"
-}
-
-function wg_up_host() {
-    [ ! -f "${WG_HOST_PRIVATE_KEY_FILE}" ] \
-        && die "File WG_HOST_PRIVATE_KEY_FILE not found *${WG_HOST_PRIVATE_KEY_FILE}*"
-
-    wg set "${WG_INTERFACE}" private-key "${WG_HOST_PRIVATE_KEY_FILE}"
-}
-
-function wg_up_peers() {
-    for wg_peer_public_key_file in ${WG_PEER_PUBLIC_KEY_FILE_LIST}
-    do
-        [ ! -f "${wg_peer_public_key_file}" ] \
-            && die "File in WG_PEER_PUBLIC_KEY_FILE_LIST not found *${wg_peer_public_key_file}*"
-
-        peer_public_key="$(cat "${wg_peer_public_key_file}")"
-        wg set "${WG_INTERFACE}" \
-            peer "${peer_public_key}" \
-            persistent-keepalive "${WG_PERSISTENT_KEEPALIVE}" \
-            allowed-ips "${WG_ALLOWED_IPS}"
-    done
-}
-
 function wg_interface() {
     action="${1}" && shift
     case "${action}" in
@@ -98,24 +57,7 @@ function wg_interface() {
             ;;
         init)
             debug "wg_interface init"
-            WG_INTERFACE="${WG_INTERFACE:-}"
-            [ "${WG_INTERFACE}" != "" ] && return 0
-
-            WG_HOST_PRIVATE_KEY_FILE="${WG_HOST_PRIVATE_KEY_FILE:?Variable not set}"
-            WG_PEER_PUBLIC_KEY_FILE_LIST="${WG_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
-
-            WG_LOG_LEVEL="${WG_LOG_LEVEL:-info}"
-            WG_USERSPACE="${WG_USERSPACE:-wireguard-go}"
-
-            WG_ALLOWED_IPS="${WG_ALLOWED_IPS:-100.64.0.0/24}"
-            WG_PERSISTENT_KEEPALIVE="${WG_PERSISTENT_KEEPALIVE:-25}"
-            ;;
-        up)
-            [ "${WG_INTERFACE}" != "" ] && return 0
-            debug "wg_interface up"
-            wg_up_userspace
-            wg_up_host
-            wg_up_peers
+            WG_INTERFACE="${WG_INTERFACE:?Variable not set}"
             ;;
         get)
             param="${1}" && shift
@@ -156,7 +98,117 @@ function wg_interface() {
             esac
             ;;
         status)
-            wg show "${WG_INTERFACE}"
+            wg show interfaces \
+                | grep "${WG_INTERFACE}" > /dev/null \
+                && echo "up" \
+                || echo "down"
+            ;;
+    esac
+}
+
+# wireguard quick
+
+function wg_quick_validate_files() {
+    [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ] \
+        && die "File WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*"
+
+    for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+    do
+        [ ! -f "${peer_pub_file}" ] \
+            && die "File in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*"
+    done
+    return 0
+}
+
+function wg_quick_generate_config_file() {
+    cat <<EOF
+[Interface]
+PrivateKey = $(cat "${WGQ_HOST_PRIVATE_KEY_FILE}")
+Address = ${WGQ_HOST_ADDRESS}
+
+EOF
+
+    for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+    do
+    cat <<EOF
+[Peer]
+PublicKey = $(cat "${peer_pub_file}")
+AllowedIPs = ${WGQ_PEER_ALLOWED_IPS}
+PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
+
+EOF
+    done
+}
+
+function wg_quick_interface() {
+    action="${1}" && shift
+    case "${action}" in
+        protocol)
+            echo "udp"
+            ;;
+        init)
+            debug "wg_quick_interface init"
+
+            WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
+            WGQ_PEER_PUBLIC_KEY_FILE_LIST="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
+
+            WGQ_HOST_ADDRESS="${WGQ_HOST_ADDRESS:-100.64.0.$(($RANDOM%254 + 1))}"
+
+            WGQ_PEER_ALLOWED_IPS="${WGQ_PEER_ALLOWED_IPS:-100.64.0.0/24}"
+            WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-25}"
+
+            WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
+            WGQ_USERSPACE="${WGQ_USERSPACE:-}"
+
+            WGQ_INTERFACE="wirething-$(uuidgen | cut -c 1-5)"
+
+            case "${OS}" in
+                Darwin)
+                    WGQ_CONFIG_PATH="${WGQ_CONFIG_PATH:-/usr/local/etc/wireguard}"
+                    ;;
+                Linux)
+                    WGQ_CONFIG_PATH="${WGQ_CONFIG_PATH:-/etc/wireguard}"
+                    ;;
+                *)
+                    die "OS not supported *${OS}*"
+            esac
+
+            WGQ_CONFIG_FILE="${WGQ_CONFIG_PATH}/${WGQ_INTERFACE}.conf"
+
+            wg_quick_validate_files
+            ;;
+        up)
+            debug "wg_quick_interface up"
+
+            mkdir -p "${WGQ_CONFIG_PATH}"
+            wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+
+            export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
+            export LOG_LEVEL="${WGQ_LOG_LEVEL}"
+
+            wg-quick up "${WGQ_CONFIG_FILE}"
+
+            case "${OS}" in
+                Darwin)
+                    WG_INTERFACE="$(cat "/var/run/wireguard/${WGQ_INTERFACE}.name")"
+                    ;;
+                Linux)
+                    WG_INTERFACE="${WGQ_INTERFACE}"
+                    ;;
+                *)
+                    die "OS not supported *${OS}*"
+            esac
+            ;;
+        down)
+            debug "wg_quick_interface down"
+
+            [ "$(wg_interface status)" == "up" ] \
+                && wg-quick down "${WGQ_CONFIG_FILE}"
+
+            rm "${WGQ_CONFIG_FILE}" && debug "wg_quick_interface ${WGQ_CONFIG_FILE} was deleted"
+            ;;
+        get|set)
+            wg_interface ${action} ${@}
             ;;
     esac
 }
@@ -300,7 +352,7 @@ function options() {
     set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
 }
 
-WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg}"
+WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg_quick}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-wirething}"
