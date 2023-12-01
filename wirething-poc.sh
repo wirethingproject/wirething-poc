@@ -338,6 +338,91 @@ function ntfy_pubsub() {
     esac
 }
 
+# disabled encryption
+
+function disabled_encryption() {
+    action="${1}" && shift
+    case "${action}" in
+        encrypt)
+            data="${1}" && shift
+            echo "${data}" | base64
+            ;;
+        decrypt)
+            data="${1}" && shift
+            echo "${data}" | base64 -d
+            ;;
+    esac
+}
+
+# gpg ephemeral
+
+function gpg_ephemeral_validate_files() {
+    for gpg_file in ${GPG_FILE_LIST}
+    do
+        [ ! -f "${gpg_file}" ] \
+            && die "File in GPG_FILE_LIST not found *${gpg_file}*" \
+            || true
+    done
+}
+
+function gpg_ephemeral_encryption() {
+    action="${1}" && shift
+    case "${action}" in
+        init)
+            debug "gpg_ephemeral_encryption init"
+
+            export GNUPGHOME="${WT_EPHEMERAL_PATH}/gpg"
+
+            GPG_FILE_LIST="${GPG_FILE_LIST:?Variable not set}"
+
+            GPG_DOMAIN_NAME="${GPG_DOMAIN_NAME:-wirething.gpg}"
+
+            gpg_ephemeral_validate_files
+            ;;
+        up)
+            debug "gpg_ephemeral_encryption up"
+
+            mkdir -p "${GNUPGHOME}"
+
+            gpg --import ${GPG_FILE_LIST} 2> "${WT_DEBUG}"
+
+            host_id="$(interface get host_id)"
+            peer_id_list="$(interface get peers_id_list)"
+
+            for id in ${host_id} ${peer_id_list}
+            do
+                gpg --list-key "${id}@${GPG_DOMAIN_NAME}" > "${WT_DEBUG}" \
+                    || die "Error GPG key *${id}@${GPG_DOMAIN_NAME}* not found"
+            done
+
+            value="${WT_PID}"
+            peer_id="${host_id}"
+            encrypted_value="$(gpg_ephemeral_encryption encrypt "${value}")"
+            decrypted_value="$(gpg_ephemeral_encryption decrypt "${encrypted_value}")"
+
+            [ "${value}" != "${decrypted_value}" ] \
+                && die "Error ${host_id}@${GPG_DOMAIN_NAME} could not encrypt and decrypt data" \
+                || true
+            ;;
+        down)
+            debug "gpg_ephemeral_encryption down"
+            rm -rf "${GNUPGHOME}" && debug "gpg_ephemeral_encryption *${GNUPGHOME}* was deleted"
+            ;;
+        encrypt)
+            data="${1}" && shift
+            echo "${data}" \
+                | gpg --trust-model "always" --encrypt --sign --armor -r "${peer_id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}" \
+                | base64
+            ;;
+        decrypt)
+            data="${1}" && shift
+            echo "${data}" \
+                | base64 -d \
+                | gpg --trust-model "always" --decrypt 2> "${WT_DEBUG}"
+            ;;
+    esac
+}
+
 # basic topic
 
 function wirething_topic_timestamp() {
@@ -380,17 +465,20 @@ function options() {
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg_quick}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
+WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE:-}"
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-wirething}"
 
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
 alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
+alias encryption="${WT_ENCRYPTION_TYPE}_encryption"
 alias topic="${WT_TOPIC_TYPE}_topic"
 
-interface "" || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
-punch ""     || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
-pubsub ""    || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
-topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(options topic)"
+interface ""    || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
+punch ""        || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
+pubsub ""       || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
+encryption ""   || die "Invalid WT_ENCRYPTION_TYPE *${WT_ENCRYPTION_TYPE}*, options: $(options encryption)"
+topic ""        || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(options topic)"
 
 # wirething host
 
@@ -408,7 +496,8 @@ function wirething_host_loop() {
 
             for peer_id in ${peer_id_list}
             do
-                pubsub publish "$(topic publish)" "${host_endpoint}"
+                encrypted_host_endpoint="$(encryption encrypt "${host_endpoint}")"
+                pubsub publish "$(topic publish)" "${encrypted_host_endpoint}"
             done
         }
 
@@ -441,8 +530,9 @@ function wirething_peer_loop() {
     while true
     do
         pubsub subscribe "$(topic subscribe)" | {
-            while read peer_endpoint
+            while read encrypted_peer_endpoint
             do
+                peer_endpoint="$(encryption decrypt "${encrypted_peer_endpoint}")"
                 interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
             done
         }
@@ -484,6 +574,7 @@ wt_type_list=(
     interface
     punch
     pubsub
+    encryption
     topic
     host
     peer
