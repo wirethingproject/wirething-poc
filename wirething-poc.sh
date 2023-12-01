@@ -282,26 +282,57 @@ function ntfy_pubsub() {
         init)
             debug "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+            NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-10}"
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-60}"
             ;;
         publish)
             topic="${1}" && shift
-            host_endpoint="${1}" && shift
-            info "ntfy_pubsub publish $(short "${topic}") ${host_endpoint}"
-            { curl -Ns --max-time "${NTFY_PUBLISH_TIMEOUT}" "${NTFY_URL}/${topic}" -d "${host_endpoint}" || true; } \
-                > /dev/null
+            request="${1}" && shift
+            info "ntfy_pubsub publish $(short "${topic}") $(short "${request}")"
+
+            {
+                curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_PUBLISH_TIMEOUT}" --stderr - \
+                    "${NTFY_URL}/${topic}" -d "${request}" || true
+            } | while read response
+                do
+                    echo "${response}" | hexdump -C > "${WT_TRACE}"
+
+                    case "${response}" in
+                        "{"*"event"*"message"*)
+                            ;;
+                        *)
+                            error "ntfy_pubsub publish ${response}"
+                    esac
+                done
             ;;
         subscribe)
             topic="${1}" && shift
-            { curl -Ns --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" "${NTFY_URL}/${topic}/raw" || true; } \
-                | while read peer_endpoint
+            debug "ntfy_pubsub subscribe $(short "${topic}")"
+
+            {
+                curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
+                    "${NTFY_URL}/${topic}/raw" || true;
+            } | while read response
                 do
-                    if [ "${peer_endpoint}" != "" ]
-                    then
-                        info "ntfy_pubsub subscribe $(short "${topic}") ${peer_endpoint}"
-                        echo "${peer_endpoint}"
-                    fi
+                    echo "${response}" | hexdump -C > "${WT_TRACE}"
+
+                    case "${response}" in
+                        "")
+                            ;;
+                        "{"*"error"*)
+                            error "ntfy_pubsub subscribe ${response}"
+                            ;;
+                        "curl"*"timed out"*)
+                            debug "ntfy_pubsub subscribe ${response}"
+                            ;;
+                        "curl"*)
+                            error "ntfy_pubsub subscribe ${response}"
+                            ;;
+                        *)
+                            info "ntfy_pubsub subscribe $(short "${topic}") $(short "${response}")"
+                            echo "${response}"
+                    esac
                 done
             ;;
     esac
