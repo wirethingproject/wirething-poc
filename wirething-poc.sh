@@ -26,17 +26,16 @@ function log_date() {
     date -Iseconds
 }
 
-function info() {
-    echo "$(log_date) INFO ${@}" > /dev/stderr
+function debug() {
+    echo "$(log_date) DEBUG ${@}" > "${WT_DEBUG}"
 }
 
-function debug() {
-    [ "${WT_LOG_LEVEL}" != "debug" ] && return 0
-    echo "$(log_date) DEBUG ${@}" > /dev/stderr
+function info() {
+    echo "$(log_date) INFO ${@}" > "${WT_INFO}"
 }
 
 function error() {
-    echo "$(log_date) ERROR ${@}" > /dev/stderr
+    echo "$(log_date) ERROR ${@}" > "${WT_ERROR}"
 }
 
 function die() {
@@ -105,7 +104,7 @@ function wg_interface() {
             ;;
         status)
             wg show interfaces \
-                | grep "${WG_INTERFACE}" > /dev/null \
+                | grep "${WG_INTERFACE}" > "${WT_DEBUG}" \
                     && echo "up" \
                     || echo "down"
             ;;
@@ -116,14 +115,15 @@ function wg_interface() {
 
 function wg_quick_validate_files() {
     [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ] \
-        && die "File WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*"
+        && die "File WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*" \
+        || true
 
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
         [ ! -f "${peer_pub_file}" ] \
-            && die "File in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*"
+            && die "File in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*" \
+            || true
     done
-    return 0
 }
 
 function wg_quick_generate_config_file() {
@@ -166,33 +166,20 @@ function wg_quick_interface() {
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
             WGQ_USERSPACE="${WGQ_USERSPACE:-}"
 
-            WGQ_INTERFACE="wirething-$(uuidgen | cut -c 1-5)"
-
-            case "${OS}" in
-                Darwin)
-                    WGQ_CONFIG_PATH="${WGQ_CONFIG_PATH:-/usr/local/etc/wireguard}"
-                    ;;
-                Linux)
-                    WGQ_CONFIG_PATH="${WGQ_CONFIG_PATH:-/etc/wireguard}"
-                    ;;
-                *)
-                    die "OS not supported *${OS}*"
-            esac
-
-            WGQ_CONFIG_FILE="${WGQ_CONFIG_PATH}/${WGQ_INTERFACE}.conf"
+            WGQ_INTERFACE="wirething-${WT_PID}"
+            WGQ_CONFIG_FILE="${WT_EPHEMERAL_PATH}/${WGQ_INTERFACE}.conf"
 
             wg_quick_validate_files
             ;;
         up)
             debug "wg_quick_interface up"
 
-            mkdir -p "${WGQ_CONFIG_PATH}"
             wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
 
             export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
             export LOG_LEVEL="${WGQ_LOG_LEVEL}"
 
-            wg-quick up "${WGQ_CONFIG_FILE}"
+            wg-quick up "${WGQ_CONFIG_FILE}" 2> "${WT_DEBUG}"
 
             case "${OS}" in
                 Darwin)
@@ -209,9 +196,10 @@ function wg_quick_interface() {
             debug "wg_quick_interface down"
 
             [ "$(wg_interface status)" == "up" ] \
-                && wg-quick down "${WGQ_CONFIG_FILE}"
+                && wg-quick down "${WGQ_CONFIG_FILE}" \
+                || true
 
-            rm "${WGQ_CONFIG_FILE}" && debug "wg_quick_interface ${WGQ_CONFIG_FILE} was deleted"
+            rm -f "${WGQ_CONFIG_FILE}" && debug "wg_quick_interface *${WGQ_CONFIG_FILE}* was deleted"
             ;;
         get|set)
             wg_interface ${action} ${@}
@@ -376,6 +364,7 @@ topic ""     || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(option
 # wirething host
 
 function wirething_host_loop() {
+    debug "wirething_host start delay ${WT_HOST_START_DELAY}"
     sleep "${WT_HOST_START_DELAY}"
 
     while true
@@ -392,8 +381,10 @@ function wirething_host_loop() {
             done
         }
 
+        debug "wirething_host publish interval ${WT_HOST_INTERVAL}"
         sleep "${WT_HOST_INTERVAL}"
     done
+    debug "wirething_host end $(short "${host_id}")"
 }
 
 function wirething_host() {
@@ -413,6 +404,7 @@ function wirething_host() {
 # wirething peer
 
 function wirething_peer_loop() {
+    debug "wirething_peer start delay ${WT_HOST_START_DELAY}"
     sleep "${WT_PEER_START_DELAY}"
 
     while true
@@ -424,8 +416,10 @@ function wirething_peer_loop() {
             done
         }
 
+        debug "wirething_peer subscribe interval ${WT_PEER_INTERVAL}"
         sleep "${WT_PEER_INTERVAL}"
     done
+    debug "wirething_peer end $(short "${peer_id}")"
 }
 
 function wirething_peer() {
@@ -487,21 +481,58 @@ function wirething() {
     case "${action}" in
         init)
             WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
+
+            WT_TRACE="/dev/null"
+            WT_DEBUG="/dev/null"
+            WT_INFO="/dev/stderr"
+            WT_ERROR="/dev/stderr"
+
+            case "${WT_LOG_LEVEL}" in
+                trace)
+                    set -x
+                    export PS4='+ :${LINENO} ${FUNCNAME[0]}(): '
+                    WT_TRACE="/dev/stderr"
+                    WT_DEBUG="/dev/stderr"
+                    ;;
+                debug)
+                    WT_DEBUG="/dev/stderr"
+                    ;;
+                info)
+                    ;;
+                error)
+                    WT_INFO="/dev/null"
+                    ;;
+                *)
+                    die "Invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
+            esac
+
             debug "wirething init"
+
+            WT_PID="${BASHPID}"
+
+            WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
+            WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
+
             wt_type_for_each init
             wt_validate_protocol "$(punch protocol)" "$(interface protocol)"
             ;;
         up)
             debug "wirething up"
-            wt_type_for_each up
+
             trap "wirething down" INT TERM EXIT
+            mkdir -p "${WT_EPHEMERAL_PATH}"
+
+            wt_type_for_each up
             ;;
         down)
             # Untrap to avoid infinite loops
             trap - INT TERM EXIT
             echo > /dev/stderr
-            debug "wirething down"
+
             wt_type_for_each down
+
+            debug "wirething down"
+            rm -rf "${WT_EPHEMERAL_PATH}" && debug "wirething *${WT_EPHEMERAL_PATH}* was deleted"
             kill 0
             ;;
         start)
