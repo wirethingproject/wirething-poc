@@ -280,7 +280,7 @@ function ntfy_pubsub() {
     case "${action}" in
         init)
             debug "ntfy_pubsub init"
-            NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+            NTFY_URL="${NTFY_URL:-https://ntfy.wirething.org}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-10}"
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-600}" # 10 minutes
