@@ -388,7 +388,12 @@ function gpg_ephemeral_encryption() {
 
             echo -ne "${GPG_AGENT_CONF}" > "${GNUPGHOME}/gpg-agent.conf"
 
-            gpg --import ${GPG_FILE_LIST} 2> "${WT_DEBUG}"
+            for file in ${GPG_FILE_LIST}
+            do
+                gpg --import ${file} 2> "${WT_DEBUG}"
+                gpg --show-keys --with-colons  "${file}" | grep "fpr" | cut -f "10-" -d ":" \
+                    | sed "s,:,:6:," | gpg --import-ownertrust
+            done
 
             host_id="$(interface get host_id)"
             peer_id_list="$(interface get peers_id_list)"
@@ -400,29 +405,36 @@ function gpg_ephemeral_encryption() {
             done
 
             value="${WT_PID}"
-            peer_id="${host_id}"
-            encrypted_value="$(gpg_ephemeral_encryption encrypt "${value}")"
-            decrypted_value="$(gpg_ephemeral_encryption decrypt "${encrypted_value}")"
+            encrypted_value="$(gpg_ephemeral_encryption encrypt "${host_id}" "${value}")"
+            decrypted_value="$(gpg_ephemeral_encryption decrypt "${host_id}" "${encrypted_value}")"
 
             [ "${value}" != "${decrypted_value}" ] \
                 && die "Error ${host_id}@${GPG_DOMAIN_NAME} could not encrypt and decrypt data" \
                 || true
+
+            for peer_id in ${peer_id_list}
+            do
+                gpg_ephemeral_encryption encrypt "${peer_id}" "${value}" \
+                    || die "Error ${id}@${GPG_DOMAIN_NAME} could not encrypt data"
+            done
             ;;
         down)
             debug "gpg_ephemeral_encryption down"
             rm -rf "${GNUPGHOME}" && debug "gpg_ephemeral_encryption *${GNUPGHOME}* was deleted"
             ;;
         encrypt)
+            gpg_id="${1}" && shift
             data="${1}" && shift
             echo "${data}" \
-                | gpg --trust-model "always" --encrypt --sign --armor -r "${peer_id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}" \
+                | gpg --batch --encrypt --sign --armor -r "${gpg_id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}" \
                 | base64
             ;;
         decrypt)
+            gpg_id="${1}" && shift
             data="${1}" && shift
             echo "${data}" \
                 | base64 -d \
-                | gpg --trust-model "always" --decrypt 2> "${WT_DEBUG}"
+                | gpg --batch --decrypt --default-key "${gpg_id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}"
             ;;
     esac
 }
@@ -499,7 +511,7 @@ function wirething_host_loop() {
 
             for peer_id in ${peer_id_list}
             do
-                encrypted_host_endpoint="$(encryption encrypt "${host_endpoint}")"
+                encrypted_host_endpoint="$(encryption encrypt "${peer_id}" "${host_endpoint}")"
                 pubsub publish "$(topic publish)" "${encrypted_host_endpoint}"
             done
         }
@@ -535,7 +547,7 @@ function wirething_peer_loop() {
         pubsub subscribe "$(topic subscribe)" | {
             while read encrypted_peer_endpoint
             do
-                peer_endpoint="$(encryption decrypt "${encrypted_peer_endpoint}")"
+                peer_endpoint="$(encryption decrypt "${host_id}" "${encrypted_peer_endpoint}")"
                 interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
             done
         }
