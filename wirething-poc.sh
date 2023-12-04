@@ -217,7 +217,7 @@ function udphole_punch() {
         init)
             debug "udphole_punch init"
             UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}"
-            UDPHOLE_PORT="${UDPHOLE_PORT:-53000}"
+            UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             ;;
         run)
             debug "udphole_punch run"
