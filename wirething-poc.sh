@@ -9,7 +9,6 @@ alias sha256sum='sha256sum | cut -f 1 -d " "'
 umask 077
 
 export LC_ALL=C
-export OS="$(uname -s)"
 
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
 auto_su() {
@@ -181,15 +180,15 @@ function wg_quick_interface() {
 
             wg-quick up "${WGQ_CONFIG_FILE}" 2> "${WT_DEBUG}"
 
-            case "${OS}" in
-                Darwin)
+            case "${OSTYPE}" in
+                darwin-*)
                     WG_INTERFACE="$(cat "/var/run/wireguard/${WGQ_INTERFACE}.name")"
                     ;;
-                Linux)
+                linux-*)
                     WG_INTERFACE="${WGQ_INTERFACE}"
                     ;;
                 *)
-                    die "OS not supported *${OS}*"
+                    die "OS not supported *${OSTYPE}*"
             esac
             ;;
         down)
