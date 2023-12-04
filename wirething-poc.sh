@@ -346,10 +346,12 @@ function disabled_encryption() {
     action="${1}" && shift
     case "${action}" in
         encrypt)
+            id="${1}" && shift
             data="${1}" && shift
             echo "${data}" | base64
             ;;
         decrypt)
+            id="${1}" && shift
             data="${1}" && shift
             echo "${data}" | base64 -d
             ;;
@@ -357,15 +359,6 @@ function disabled_encryption() {
 }
 
 # gpg ephemeral
-
-function gpg_ephemeral_validate_files() {
-    for gpg_file in ${GPG_FILE_LIST}
-    do
-        [ ! -f "${gpg_file}" ] \
-            && die "File in GPG_FILE_LIST not found *${gpg_file}*" \
-            || true
-    done
-}
 
 function gpg_ephemeral_encryption() {
     action="${1}" && shift
@@ -377,9 +370,15 @@ function gpg_ephemeral_encryption() {
 
             GPG_FILE_LIST="${GPG_FILE_LIST:?Variable not set}"
             GPG_DOMAIN_NAME="${GPG_DOMAIN_NAME:-wirething.gpg}"
-            GPG_AGENT_CONF="${GPG_AGENT_CONF:-disable-scdaemon\n}"
+            GPG_OPTIONS="${GPG_OPTIONS:---disable-dirmngr --no-auto-key-locate --batch --no}"
+            GPG_AGENT_CONF="${GPG_AGENT_CONF:-disable-scdaemon\nextra-socket /dev/null\nbrowser-socket /dev/null\n}" # Disabling scdaemon (smart card daemon) make gpg don't try to use your Yubikey
 
-            gpg_ephemeral_validate_files
+            for gpg_file in ${GPG_FILE_LIST}
+            do
+                [ ! -f "${gpg_file}" ] \
+                    && die "File in GPG_FILE_LIST not found *${gpg_file}*" \
+                    || true
+            done
             ;;
         up)
             debug "gpg_ephemeral_encryption up"
@@ -390,32 +389,10 @@ function gpg_ephemeral_encryption() {
 
             for file in ${GPG_FILE_LIST}
             do
-                gpg --import ${file} 2> "${WT_DEBUG}"
-                gpg --show-keys --with-colons  "${file}" | grep "fpr" | cut -f "10-" -d ":" \
-                    | sed "s,:,:6:," | gpg --import-ownertrust
-            done
-
-            host_id="$(interface get host_id)"
-            peer_id_list="$(interface get peers_id_list)"
-
-            for id in ${host_id} ${peer_id_list}
-            do
-                gpg --list-key "${id}@${GPG_DOMAIN_NAME}" > "${WT_DEBUG}" \
-                    || die "Error GPG key *${id}@${GPG_DOMAIN_NAME}* not found"
-            done
-
-            value="${WT_PID}"
-            encrypted_value="$(gpg_ephemeral_encryption encrypt "${host_id}" "${value}")"
-            decrypted_value="$(gpg_ephemeral_encryption decrypt "${host_id}" "${encrypted_value}")"
-
-            [ "${value}" != "${decrypted_value}" ] \
-                && die "Error ${host_id}@${GPG_DOMAIN_NAME} could not encrypt and decrypt data" \
-                || true
-
-            for peer_id in ${peer_id_list}
-            do
-                gpg_ephemeral_encryption encrypt "${peer_id}" "${value}" \
-                    || die "Error ${id}@${GPG_DOMAIN_NAME} could not encrypt data"
+                gpg ${GPG_OPTIONS} --import ${file} 2> "${WT_DEBUG}"
+                gpg ${GPG_OPTIONS} --show-keys --with-colons "${file}" 2> "${WT_DEBUG}" \
+                    | grep "fpr" | cut -f "10-" -d ":" | sed "s,:,:6:," \
+                    | gpg ${GPG_OPTIONS} --import-ownertrust 2> "${WT_DEBUG}"
             done
             ;;
         down)
@@ -423,18 +400,18 @@ function gpg_ephemeral_encryption() {
             rm -rf "${GNUPGHOME}" && debug "gpg_ephemeral_encryption *${GNUPGHOME}* was deleted"
             ;;
         encrypt)
-            gpg_id="${1}" && shift
+            id="${1}" && shift
             data="${1}" && shift
             echo "${data}" \
-                | gpg --batch --encrypt --sign --armor -r "${gpg_id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}" \
+                | gpg --encrypt ${GPG_OPTIONS} --sign --armor --hidden-recipient "${id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}" \
                 | base64
             ;;
         decrypt)
-            gpg_id="${1}" && shift
+            id="${1}" && shift
             data="${1}" && shift
             echo "${data}" \
                 | base64 -d \
-                | gpg --batch --decrypt --default-key "${gpg_id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}"
+                | gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" 2> "${WT_DEBUG}"
             ;;
     esac
 }
@@ -531,6 +508,15 @@ function wirething_host() {
             ;;
         start)
             debug "wirething_host start $(short "${host_id}")"
+
+            value="${WT_PID}"
+            encrypted_value="$(encryption encrypt "${host_id}" "${value}" 2> "${WT_DEBUG}")"
+            decrypted_value="$(encryption decrypt "${host_id}" "${encrypted_value}" 2> "${WT_DEBUG}")"
+
+            [ "${value}" != "${decrypted_value}" ] \
+                && die "Error ${host_id} could not encrypt and decrypt data" \
+                || true
+
             wirething_host_loop &
             ;;
     esac
@@ -567,6 +553,10 @@ function wirething_peer() {
             ;;
         start)
             debug "wirething_peer start $(short "${peer_id}")"
+
+            encryption encrypt "${peer_id}" "${value}" > "${WT_TRACE}" 2> "${WT_DEBUG}" \
+                || die "Error ${peer_id} could not encrypt data"
+
             wirething_peer_loop &
             ;;
     esac
