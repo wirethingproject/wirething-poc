@@ -285,6 +285,7 @@ function ntfy_pubsub() {
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-10}"
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-600}" # 10 minutes
+            NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-60}" # 60 segundos
             ;;
         publish)
             topic="${1}" && shift
@@ -322,12 +323,14 @@ function ntfy_pubsub() {
                             ;;
                         "{"*"error"*)
                             error "ntfy_pubsub subscribe ${response}"
-                            ;;
-                        "curl"*"timed out"*)
-                            debug "ntfy_pubsub subscribe ${response}"
+                            sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
                             ;;
                         "curl"*)
                             error "ntfy_pubsub subscribe ${response}"
+                            sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
+                            ;;
+                        "curl"*"timed out"*)
+                            debug "ntfy_pubsub subscribe ${response}"
                             ;;
                         *)
                             info "ntfy_pubsub subscribe $(short "${topic}") $(short "${response}")"
