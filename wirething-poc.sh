@@ -181,10 +181,10 @@ function wg_quick_interface() {
             wg-quick up "${WGQ_CONFIG_FILE}" 2> "${WT_DEBUG}"
 
             case "${OSTYPE}" in
-                darwin-*)
+                darwin*)
                     WG_INTERFACE="$(cat "/var/run/wireguard/${WGQ_INTERFACE}.name")"
                     ;;
-                linux-*)
+                linux*)
                     WG_INTERFACE="${WGQ_INTERFACE}"
                     ;;
                 *)
