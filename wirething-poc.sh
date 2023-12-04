@@ -160,7 +160,7 @@ function wg_quick_interface() {
             WGQ_HOST_ADDRESS="${WGQ_HOST_ADDRESS:-100.64.0.$((${RANDOM} % 254 + 1))}"
 
             WGQ_PEER_ALLOWED_IPS="${WGQ_PEER_ALLOWED_IPS:-100.64.0.0/24}"
-            WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-25}"
+            WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-25}" # 25 seconds
 
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
             WGQ_USERSPACE="${WGQ_USERSPACE:-}"
@@ -282,9 +282,9 @@ function ntfy_pubsub() {
             debug "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.wirething.org}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
-            NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-10}"
+            NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-10}" # 10 seconds
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-600}" # 10 minutes
-            NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-60}" # 60 segundos
+            NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-60}" # 60 seconds
             ;;
         publish)
             topic="${1}" && shift
@@ -376,7 +376,6 @@ function gpg_ephemeral_encryption() {
             export GNUPGHOME="${WT_EPHEMERAL_PATH}/gpg"
 
             GPG_FILE_LIST="${GPG_FILE_LIST:?Variable not set}"
-
             GPG_DOMAIN_NAME="${GPG_DOMAIN_NAME:-wirething.gpg}"
 
             gpg_ephemeral_validate_files
@@ -512,7 +511,7 @@ function wirething_host() {
     action="${1}" && shift
     case "${action}" in
         init)
-            WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}"
+            WT_HOST_START_DELAY="${WT_HOST_START_DELAY:-10}" # 10 seconds
             WT_HOST_INTERVAL="${WT_HOST_INTERVAL:-900}" # 15 minutes
             ;;
         start)
@@ -548,7 +547,7 @@ function wirething_peer() {
     action="${1}" && shift
     case "${action}" in
         init)
-            WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}"
+            WT_PEER_START_DELAY="${WT_PEER_START_DELAY:-1}" # 1 second
             WT_PEER_INTERVAL="${WT_PEER_INTERVAL:-1}" # 1 second
             ;;
         start)
