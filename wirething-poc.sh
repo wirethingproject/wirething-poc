@@ -429,8 +429,7 @@ function gpg_ephemeral_encryption() {
 # basic topic
 
 function wirething_topic_timestamp() {
-    epoch="$(date -u "+%s")"
-    echo -n "$((${epoch} / ${WT_TOPIC_TIMESTAMP_OFFSET}))"
+    echo -n "$((${EPOCHSECONDS} / ${WT_TOPIC_TIMESTAMP_OFFSET}))"
 }
 
 function wirething_topic_hash_values() {
