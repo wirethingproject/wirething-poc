@@ -377,6 +377,7 @@ function gpg_ephemeral_encryption() {
 
             GPG_FILE_LIST="${GPG_FILE_LIST:?Variable not set}"
             GPG_DOMAIN_NAME="${GPG_DOMAIN_NAME:-wirething.gpg}"
+            GPG_AGENT_CONF="${GPG_AGENT_CONF:-disable-scdaemon\n}"
 
             gpg_ephemeral_validate_files
             ;;
@@ -384,6 +385,8 @@ function gpg_ephemeral_encryption() {
             debug "gpg_ephemeral_encryption up"
 
             mkdir -p "${GNUPGHOME}"
+
+            echo -ne "${GPG_AGENT_CONF}" > "${GNUPGHOME}/gpg-agent.conf"
 
             gpg --import ${GPG_FILE_LIST} 2> "${WT_DEBUG}"
 
