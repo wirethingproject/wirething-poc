@@ -484,6 +484,8 @@ function wirething_host_loop() {
             read host_port
             read host_endpoint
 
+            echo "${host_endpoint}" > "${WT_HOST_ENDPOINT_FILE}"
+
             interface set host_port "${host_port}"
 
             for peer_id in ${peer_id_list}
@@ -639,6 +641,9 @@ function wirething() {
 
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
+            WT_STATE="${WT_EPHEMERAL_PATH}/state"
+
+            WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
 
             wt_type_for_each init
             wt_validate_protocol "$(punch protocol)" "$(interface protocol)"
@@ -647,7 +652,8 @@ function wirething() {
             debug "wirething up"
 
             trap "wirething down" INT TERM EXIT
-            mkdir -p "${WT_EPHEMERAL_PATH}"
+            mkdir -p "${WT_STATE}"
+            touch "${WT_HOST_ENDPOINT_FILE}"
 
             wt_type_for_each up
             ;;
