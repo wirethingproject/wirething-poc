@@ -320,16 +320,16 @@ function ntfy_pubsub() {
                     case "${response}" in
                         "")
                             ;;
-                        "{"*"error"*)
-                            error "ntfy_pubsub subscribe ${response}"
-                            sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
+                        "curl"*"timed out"*)
+                            debug "ntfy_pubsub subscribe ${response}"
                             ;;
                         "curl"*)
                             error "ntfy_pubsub subscribe ${response}"
                             sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
                             ;;
-                        "curl"*"timed out"*)
-                            debug "ntfy_pubsub subscribe ${response}"
+                        "{"*"error"*)
+                            error "ntfy_pubsub subscribe ${response}"
+                            sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
                             ;;
                         *)
                             info "ntfy_pubsub subscribe $(short "${topic}") $(short "${response}")"
