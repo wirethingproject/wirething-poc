@@ -216,7 +216,7 @@ function udphole_punch() {
             ;;
         init)
             debug "udphole_punch init"
-            UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}"
+            UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
             UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             ;;
         run)
