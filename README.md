@@ -6,17 +6,50 @@ This proof of concept uses the [ntfy](https://ntfy.sh) service, the project
 without any login two devices behind NAT.
 
     # Setup
+    bash
     umask 077
-    wg genkey > alice.key
-    cat alice.key | wg pubkey > alice.pub
-    wg genkey > bob.key
-    cat bob.key | wg pubkey > bob.pub
+
+    mkdir "mesh"
+    cd "mesh"
+
+    mkdir "gpg"
+    export GNUPGHOME="${PWD}/gpg"
+
+
+    name="alice"
+
+    wg genkey > "${name}.key"
+    cat "${name}.key" | wg pubkey > "${name}.pub"
+
+    key_name="$(cat "${name}.pub")@wirething.gpg"
+    gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${key_name}"
+    gpg --armor --export-secret-keys "${key_name}" > "${name}-key.gpg"
+    gpg --armor --export "${key_name}" > "${name}-pub.gpg"
+
+
+    name="bob"
+
+    wg genkey > "${name}.key"
+    cat "${name}.key" | wg pubkey > "${name}.pub"
+
+    key_name="$(cat "${name}.pub")@wirething.gpg"
+    gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${key_name}"
+    gpg --armor --export-secret-keys "${key_name}" > "${name}-key.gpg"
+    gpg --armor --export "${key_name}" > "${name}-pub.gpg"
+
+
+    unset GNUPGHOME
+    rm -rvf "gpg"
 
     # Terminal 1
-    sudo WG_HOST_PRIVATE_KEY_FILE=alice.key WG_PEER_PUBLIC_KEY_FILE_LIST=bob.pub ./wirething-poc.sh
+    sudo WGQ_HOST_PRIVATE_KEY_FILE=alice.key WGQ_PEER_PUBLIC_KEY_FILE_LIST=bob.pub \
+        GPG_FILE_LIST="alice-key.gpg bob-pub.gpg" \
+        ../wirething-poc.sh
 
     # Terminal 2
-    sudo WG_HOST_PRIVATE_KEY_FILE=bob.key WG_PEER_PUBLIC_KEY_FILE_LIST=alice.pub ./wirething-poc.sh
+    sudo WGQ_HOST_PRIVATE_KEY_FILE=bob.key WGQ_PEER_PUBLIC_KEY_FILE_LIST=alice.pub \
+        GPG_FILE_LIST="bob-key.gpg alice-pub.gpg" \
+        ../wirething-poc.sh
 
     # Terminal 3
     sudo wg show
