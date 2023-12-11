@@ -819,10 +819,34 @@ function wirething_main() {
             interval_based_punch_usecase init
             always_on_peer_subscribe_usecase init
             ;;
+        signal)
+            signal="${1}" && shift
+            result="${1}" && shift
+
+            debug "wirething_main signal ${signal} ${result}"
+
+            case "${signal}" in
+                EXIT)
+                    # Set trap to empty to run only once
+                    trap "" ${signal}
+                    wirething_main down
+                    kill 0
+                    ;;
+            esac
+            ;;
         up)
             debug "wirething_main up"
 
-            trap "wirething_main down" INT TERM EXIT
+            for signal in SIGHUP SIGINT SIGQUIT SIGILL SIGTRAP SIGABRT SIGEMT \
+                SIGFPE SIGKILL SIGBUS SIGSEGV SIGSYS SIGPIPE SIGALRM SIGTERM \
+                SIGURG SIGSTOP SIGTSTP SIGCONT SIGTTIN SIGTTOU SIGIO \
+                SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGWINCH SIGINFO SIGUSR1 \
+                SIGUSR2 EXIT # SIGCHLD
+            do
+                trap "wirething_main signal ${signal} ${?:-null}" "${signal}"
+            done
+
+
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             wt_type_for_each up
@@ -839,16 +863,11 @@ function wirething_main() {
             done
             ;;
         down)
-            # Untrap to avoid infinite loops
-            trap - INT TERM EXIT
-            echo > /dev/stderr
-
             wt_type_for_each down
             wirething down
 
             debug "wirething_main down"
             rm -rf "${WT_EPHEMERAL_PATH}" && debug "wirething_main *${WT_EPHEMERAL_PATH}* was deleted"
-            kill 0
             ;;
         start)
             debug "wirething_main start"
