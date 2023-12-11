@@ -485,6 +485,7 @@ function gpg_ephemeral_encryption() {
             ;;
         down)
             debug "gpg_ephemeral_encryption down"
+            gpgconf --kill gpg-agent
             rm -rf "${GNUPGHOME}" && debug "gpg_ephemeral_encryption *${GNUPGHOME}* was deleted"
             ;;
         encrypt)
