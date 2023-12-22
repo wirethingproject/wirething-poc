@@ -250,7 +250,7 @@ function wg_quick_interface() {
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
             WGQ_USERSPACE="${WGQ_USERSPACE:-}"
 
-            WGQ_INTERFACE="wirething-${WT_PID}"
+            WGQ_INTERFACE="wth-${WT_PID}"
             WGQ_CONFIG_FILE="${WT_EPHEMERAL_PATH}/${WGQ_INTERFACE}.conf"
 
             wg_quick_validate_files
