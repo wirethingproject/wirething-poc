@@ -89,7 +89,7 @@ function wg_interface() {
         up)
             debug "wg_interface up"
             [ "$(wg_interface status)" == "down" ] \
-                && die "Wireguard interface *${WG_INTERFACE}* not found." \
+                && die "Wireguard interface *${WG_INTERFACE:-}* not found." \
                 || true
             ;;
         set)
@@ -181,9 +181,13 @@ function wg_interface() {
             {
                 wg show interfaces
             } | {
-                grep "${WG_INTERFACE}" >> "${WT_DEBUG}" \
-                    && status="up" \
-                    || status="down"
+                status="down"
+
+                if [ "${WG_INTERFACE:-}" != "" ] && grep "${WG_INTERFACE}" >> "${WT_DEBUG}"
+                then
+                    status="up"
+                fi
+
                 info "wg_interface status ${status}"
                 echo "${status}"
             }
