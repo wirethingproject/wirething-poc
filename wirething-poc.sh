@@ -310,9 +310,8 @@ function udphole_punch() {
             debug "udphole_punch open"
             UDPHOLE_OPEN_PID="${BASHPID}"
 
-            # https://www.xmodulo.com/tcp-udp-socket-bash-shell.html
-            exec 100<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT} \
-                && echo "" >&100
+            exec {UDPHOLE_SOCKET}<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT} \
+                && echo "" >&${UDPHOLE_SOCKET}
             ;;
         get)
             name="${1}" && shift
@@ -336,7 +335,7 @@ function udphole_punch() {
                     ;;
                 endpoint)
                     {
-                        head -n 1 <&100 || true
+                        head -n 1 <&${UDPHOLE_SOCKET} || true
                     } | {
                         read -t "${UDPHOLE_READ_TIMEOUT}" endpoint
                         if [[ ${?} -lt 128 ]]
@@ -352,8 +351,10 @@ function udphole_punch() {
             ;;
         close)
             debug "udphole_punch close"
-            exec 100<&- || true
-            exec 100>&- || true
+            exec {UDPHOLE_SOCKET}<&- || true
+            exec {UDPHOLE_SOCKET}>&- || true
+
+            unset UDPHOLE_SOCKET
             unset UDPHOLE_OPEN_PID
             ;;
     esac
