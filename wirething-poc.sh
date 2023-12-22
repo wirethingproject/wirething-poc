@@ -842,11 +842,11 @@ function wirething_main() {
         up)
             debug "wirething_main up"
 
-            for signal in SIGHUP SIGINT SIGQUIT SIGILL SIGTRAP SIGABRT SIGEMT \
+            for signal in SIGHUP SIGINT SIGQUIT SIGILL SIGTRAP SIGABRT \
                 SIGFPE SIGKILL SIGBUS SIGSEGV SIGSYS SIGPIPE SIGALRM SIGTERM \
                 SIGURG SIGSTOP SIGTSTP SIGCONT SIGTTIN SIGTTOU SIGIO \
-                SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGWINCH SIGINFO SIGUSR1 \
-                SIGUSR2 EXIT # SIGCHLD
+                SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGWINCH SIGUSR1 \
+                SIGUSR2 EXIT
             do
                 trap "wirething_main signal ${signal} ${?:-null}" "${signal}"
             done
