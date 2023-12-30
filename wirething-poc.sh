@@ -6,6 +6,17 @@ set -euo pipefail
 shopt -s expand_aliases
 alias sha256sum='sha256sum | cut -f 1 -d " "'
 
+case "${OSTYPE}" in
+    darwin*)
+        alias base64='base64'
+        ;;
+    linux*)
+        alias base64='base64 -w 0'
+        ;;
+    *)
+        die "OS not supported *${OSTYPE}*"
+esac
+
 umask 077
 
 export LC_ALL=C
