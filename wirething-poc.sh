@@ -231,10 +231,16 @@ EOF
 
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
-    cat <<EOF
+        peer_name="${peer_pub_file##*/}" # remove path
+        peer_name="${peer_name%.pub}" # remove extension
+        peer_name="${peer_name^^}" # to upper
+
+        WGQ_PEER_ALLOWED_IPS="WGQ_PEER_${peer_name}_ALLOWED_IPS" # build the variable name
+
+        cat <<EOF
 [Peer]
 PublicKey = $(cat "${peer_pub_file}")
-AllowedIPs = ${WGQ_PEER_ALLOWED_IPS}
+AllowedIPs = ${!WGQ_PEER_ALLOWED_IPS:-}
 PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
 
 EOF
@@ -255,7 +261,7 @@ function wg_quick_interface() {
 
             WGQ_HOST_ADDRESS="${WGQ_HOST_ADDRESS:-100.64.0.$((${RANDOM} % 254 + 1))}"
 
-            WGQ_PEER_ALLOWED_IPS="${WGQ_PEER_ALLOWED_IPS:-100.64.0.0/24}"
+            WGQ_PEER_ALLOWED_IPS="${WGQ_PEER_ALLOWED_IPS:-${WGQ_HOST_ADDRESS}/32}"
             WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-25}" # 25 seconds
 
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
@@ -269,7 +275,7 @@ function wg_quick_interface() {
         up)
             debug "wg_quick_interface up"
 
-            wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+            wg_quick_generate_config_file | grep -v "= $" > "${WGQ_CONFIG_FILE}"
 
             export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
             export LOG_LEVEL="${WGQ_LOG_LEVEL}"
