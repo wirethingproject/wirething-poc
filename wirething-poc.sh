@@ -32,56 +32,69 @@ auto_su() {
 
 # log
 
+function log_default_time() {
+    if [ "${SYSTEMD_EXEC_PID:-}" != "" ]
+    then
+        echo -n "false"
+    else
+        echo -n "true"
+    fi
+}
+
 function log_init() {
+    WT_LOG_TIME="${WT_LOG_TIME:-$(log_default_time)}"
     WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
 
-    exec {stdnull}>>/dev/null
-    exec {stderr}>&2
+    exec {null}>>/dev/null
+    exec {err}>&2
 
-    WT_LOG_TRACE="${stdnull}"
-    WT_LOG_DEBUG="${stdnull}"
-    WT_LOG_INFO="${stderr}"
-    WT_LOG_ERROR="${stderr}"
+    WT_LOG_TRACE="${null}"
+    WT_LOG_DEBUG="${null}"
+    WT_LOG_INFO="${err}"
+    WT_LOG_ERROR="${err}"
 
     case "${WT_LOG_LEVEL}" in
         trace)
             set -x
             export PS4='+ :${LINENO} ${FUNCNAME[0]}(): '
-            WT_LOG_TRACE="${stderr}"
-            WT_LOG_DEBUG="${stderr}"
+            WT_LOG_TRACE="${err}"
+            WT_LOG_DEBUG="${err}"
             ;;
         debug)
-            WT_LOG_DEBUG="${stderr}"
+            WT_LOG_DEBUG="${err}"
             ;;
         info)
             ;;
         error)
-            WT_LOG_INFO="${stdnull}"
+            WT_LOG_INFO="${null}"
             ;;
         *)
             die "Invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
     esac
 }
 
-function log_date() {
-    date -Iseconds
+function log() {
+    [ "${WT_LOG_TIME}" == "true" ] \
+        && echo -n "$(date -Iseconds) " || true
+
+    echo "${@}"
 }
 
 function raw_trace() {
-    echo "$(log_date) TRACE" >&${WT_LOG_TRACE} || true
+    log "TRACE" >&${WT_LOG_TRACE} || true
     cat >&${WT_LOG_TRACE} || true
 }
 
 function debug() {
-    echo "$(log_date) DEBUG ${@}" >&${WT_LOG_DEBUG} || true
+    log "DEBUG" "${@}" >&${WT_LOG_DEBUG} || true
 }
 
 function info() {
-    echo "$(log_date) INFO ${@}" >&${WT_LOG_INFO} || true
+    log "INFO" "${@}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
-    echo "$(log_date) ERROR ${@}" >&${WT_LOG_ERROR} || true
+    log "ERROR" "${@}" >&${WT_LOG_ERROR} || true
 }
 
 function die() {
