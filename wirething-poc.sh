@@ -35,25 +35,28 @@ auto_su() {
 function log_init() {
     WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
 
-    WT_TRACE="/dev/null"
-    WT_DEBUG="/dev/null"
-    WT_INFO="/dev/stderr"
-    WT_ERROR="/dev/stderr"
+    exec {stdnull}>>/dev/null
+    exec {stderr}>&2
+
+    WT_LOG_TRACE="${stdnull}"
+    WT_LOG_DEBUG="${stdnull}"
+    WT_LOG_INFO="${stderr}"
+    WT_LOG_ERROR="${stderr}"
 
     case "${WT_LOG_LEVEL}" in
         trace)
             set -x
             export PS4='+ :${LINENO} ${FUNCNAME[0]}(): '
-            WT_TRACE="/dev/stderr"
-            WT_DEBUG="/dev/stderr"
+            WT_LOG_TRACE="${stderr}"
+            WT_LOG_DEBUG="${stderr}"
             ;;
         debug)
-            WT_DEBUG="/dev/stderr"
+            WT_LOG_DEBUG="${stderr}"
             ;;
         info)
             ;;
         error)
-            WT_INFO="/dev/null"
+            WT_LOG_INFO="${stdnull}"
             ;;
         *)
             die "Invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
@@ -64,16 +67,21 @@ function log_date() {
     date -Iseconds
 }
 
+function raw_trace() {
+    echo "$(log_date) TRACE" >&${WT_LOG_TRACE} || true
+    cat >&${WT_LOG_TRACE} || true
+}
+
 function debug() {
-    echo "$(log_date) DEBUG ${@}" >> "${WT_DEBUG}" || true
+    echo "$(log_date) DEBUG ${@}" >&${WT_LOG_DEBUG} || true
 }
 
 function info() {
-    echo "$(log_date) INFO ${@}" >> "${WT_INFO}" || true
+    echo "$(log_date) INFO ${@}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
-    echo "$(log_date) ERROR ${@}" >> "${WT_ERROR}" || true
+    echo "$(log_date) ERROR ${@}" >&${WT_LOG_ERROR} || true
 }
 
 function die() {
@@ -194,7 +202,7 @@ function wg_interface() {
             } | {
                 status="down"
 
-                if [ "${WG_INTERFACE:-}" != "" ] && grep "${WG_INTERFACE}" >> "${WT_DEBUG}"
+                if [ "${WG_INTERFACE:-}" != "" ] && grep "${WG_INTERFACE}" 1>&${WT_LOG_DEBUG}
                 then
                     status="up"
                 fi
@@ -280,7 +288,7 @@ function wg_quick_interface() {
             export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
             export LOG_LEVEL="${WGQ_LOG_LEVEL}"
 
-            wg-quick up "${WGQ_CONFIG_FILE}" 2>> "${WT_DEBUG}"
+            wg-quick up "${WGQ_CONFIG_FILE}" 2>&${WT_LOG_DEBUG}
 
             case "${OSTYPE}" in
                 darwin*)
@@ -402,7 +410,7 @@ function ntfy_pubsub() {
             } | {
                 while read publish_response
                 do
-                    echo "${publish_response}" | hexdump -C >> "${WT_TRACE}"
+                    echo "${publish_response}" | hexdump -C | raw_trace
 
                     case "${publish_response}" in
                         "{"*"event"*"message"*)
@@ -424,7 +432,7 @@ function ntfy_pubsub() {
             } | {
                 while read subscribe_response
                 do
-                    echo "${subscribe_response}" | hexdump -C >> "${WT_TRACE}"
+                    echo "${subscribe_response}" | hexdump -C | raw_trace
 
                     case "${subscribe_response}" in
                         "")
@@ -499,10 +507,10 @@ function gpg_ephemeral_encryption() {
 
             for file in ${GPG_FILE_LIST}
             do
-                gpg ${GPG_OPTIONS} --import ${file} 2>> "${WT_DEBUG}"
-                gpg ${GPG_OPTIONS} --show-keys --with-colons "${file}" 2>> "${WT_DEBUG}" \
+                gpg ${GPG_OPTIONS} --import ${file} 2>&${WT_LOG_DEBUG}
+                gpg ${GPG_OPTIONS} --show-keys --with-colons "${file}" 2>&${WT_LOG_DEBUG} \
                     | grep "fpr" | cut -f "10-" -d ":" | sed "s,:,:6:," \
-                    | gpg ${GPG_OPTIONS} --import-ownertrust 2>> "${WT_DEBUG}"
+                    | gpg ${GPG_OPTIONS} --import-ownertrust 2>&${WT_LOG_DEBUG}
             done
             ;;
         down)
@@ -515,7 +523,7 @@ function gpg_ephemeral_encryption() {
             data="${1}" && shift
             echo "${data}" \
                 | gpg --encrypt ${GPG_OPTIONS} --hidden-recipient "${id}@${GPG_DOMAIN_NAME}" \
-                    --sign --armor 2>> "${WT_DEBUG}" \
+                    --sign --armor 2>&${WT_LOG_DEBUG} \
                 | base64
             ;;
         decrypt)
@@ -524,7 +532,7 @@ function gpg_ephemeral_encryption() {
             echo "${data}" \
                 | base64 -d \
                 | gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" \
-                    2>> "${WT_DEBUG}"
+                    2>&${WT_LOG_DEBUG}
             ;;
     esac
 }
@@ -615,8 +623,8 @@ function wirething() {
             host_id="${1}" && shift
 
             value="${WT_PID}"
-            encrypted_value="$(encryption encrypt "${host_id}" "${value}" 2>> "${WT_DEBUG}")"
-            decrypted_value="$(encryption decrypt "${host_id}" "${encrypted_value}" 2>> "${WT_DEBUG}")"
+            encrypted_value="$(encryption encrypt "${host_id}" "${value}" 2>&${WT_LOG_DEBUG})"
+            decrypted_value="$(encryption decrypt "${host_id}" "${encrypted_value}" 2>&${WT_LOG_DEBUG})"
 
             [ "${value}" != "${decrypted_value}" ] \
                 && die "Host ${host_id} could not encrypt and decrypt data" \
@@ -626,7 +634,7 @@ function wirething() {
             debug "wirething up_peer"
             peer_id="${1}" && shift
 
-            encryption encrypt "${peer_id}" "${value}" >> "${WT_TRACE}" 2>> "${WT_DEBUG}" \
+            encryption encrypt "${peer_id}" "${value}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
                 || die "Peer ${peer_id} could not encrypt data"
 
             ;;
@@ -675,7 +683,7 @@ function wirething() {
 
             host_endpoint="$(wirething get host_endpoint)"
 
-            echo "${host_endpoint}" | hexdump -C >> "${WT_TRACE}"
+            echo "${host_endpoint}" | hexdump -C | raw_trace
 
             if [ "${host_endpoint}" != "" ]
             then
@@ -699,7 +707,7 @@ function wirething() {
                 do
                     new_peer_endpoint="$(encryption decrypt "${host_id}" "${encrypted_peer_endpoint}")"
 
-                    echo "${new_peer_endpoint}" | hexdump -C >> "${WT_TRACE}"
+                    echo "${new_peer_endpoint}" | hexdump -C | raw_trace
 
                     if [ "${new_peer_endpoint}" != "" ]
                     then
