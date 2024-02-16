@@ -30,6 +30,39 @@ auto_su() {
         || exec sudo --preserve-env --prompt "${su_prompt}" -- "${BASH}" -- "${self}"
 }
 
+# Bash Compat
+
+function bash_compat() {
+    if [[ (${BASH_VERSINFO[0]} -gt ${1}) ||
+          (${BASH_VERSINFO[0]} -eq ${1} && ${BASH_VERSINFO[1]} -ge ${2}) ]]
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
+function epoch() {
+    echo -n "${EPOCHSECONDS:-$(date -u +"%s")}"
+}
+
+function pid() {
+    echo "${BASHPID:-${$}}"
+}
+
+function log_dev() {
+    if bash_compat 4 1
+    then
+        exec {null}>>/dev/null
+        exec {err}>&2
+    else
+        exec 5>>/dev/null
+        exec 6>&2
+        null="5"
+        err="6"
+    fi
+}
+
 # log
 
 function log_default_time() {
@@ -45,8 +78,7 @@ function log_init() {
     WT_LOG_TIME="${WT_LOG_TIME:-$(log_default_time)}"
     WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
 
-    exec {null}>>/dev/null
-    exec {err}>&2
+    log_dev
 
     WT_LOG_TRACE="${null}"
     WT_LOG_DEBUG="${null}"
@@ -195,7 +227,7 @@ function wg_interface() {
                     peer="${1}" && shift
 
                     last_handshake="$(interface get latest_handshakes "${peer_id}")"
-                    handshake_timeout="$((${EPOCHSECONDS} - ${last_handshake} - ${WG_HANDSHAKE_TIMEOUT}))"
+                    handshake_timeout="$(($(epoch) - ${last_handshake} - ${WG_HANDSHAKE_TIMEOUT}))"
 
                     if [[ ${handshake_timeout} -gt 0 ]]
                     then
@@ -553,7 +585,7 @@ function gpg_ephemeral_encryption() {
 # basic topic
 
 function wirething_topic_timestamp() {
-    echo -n "$((${EPOCHSECONDS} / ${WT_TOPIC_TIMESTAMP_OFFSET}))"
+    echo -n "$(($(epoch) / ${WT_TOPIC_TIMESTAMP_OFFSET}))"
 }
 
 function wirething_topic_hash_values() {
@@ -647,6 +679,7 @@ function wirething() {
             debug "wirething up_peer"
             peer_id="${1}" && shift
 
+            value="${WT_PID}"
             encryption encrypt "${peer_id}" "${value}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
                 || die "Peer ${peer_id} could not encrypt data"
 
@@ -758,17 +791,21 @@ function interval_based_punch_usecase() {
             WT_INTERVAL_BASED_PUNCH_ENABLED="${WT_INTERVAL_BASED_PUNCH_ENABLED:-true}"
             WT_INTERVAL_BASED_PUNCH_START_DELAY="${WT_INTERVAL_BASED_PUNCH_START_DELAY:-10}" # 10 seconds
             WT_INTERVAL_BASED_PUNCH_INTERVAL="${WT_INTERVAL_BASED_PUNCH_INTERVAL:-3600}" # 1 hour
+            WT_INTERVAL_BASED_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/interval_based_punch_usecase.pid"
             ;;
         start)
             if [[ "${WT_INTERVAL_BASED_PUNCH_ENABLED}" == "true" ]]
             then
                 debug "interval_based_punch_usecase start $(short "${host_id}")"
                 interval_based_punch_usecase loop &
+                echo "${!}" > "${WT_INTERVAL_BASED_PUNCH_PID_FILE}"
             fi
             ;;
         loop)
             debug "interval_based_punch_usecase start $(short "${host_id}") delay ${WT_INTERVAL_BASED_PUNCH_START_DELAY}"
             sleep "${WT_INTERVAL_BASED_PUNCH_START_DELAY}"
+
+            PID="$(cat "${WT_INTERVAL_BASED_PUNCH_PID_FILE}")"
 
             while true
             do
@@ -851,7 +888,7 @@ function wirething_main() {
         init)
             debug "wirething_main init"
 
-            WT_PID="${BASHPID}"
+            WT_PID="$(pid)"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-60}" # 60 seconds
