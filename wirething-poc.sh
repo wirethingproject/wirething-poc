@@ -26,6 +26,10 @@ case "${OSTYPE}" in
         die "OS not supported *${OSTYPE}*"
 esac
 
+function to_upper() {
+    echo ${1} | tr "[:lower:]" "[:upper:]"
+}
+
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
 auto_su() {
     self="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -291,7 +295,7 @@ EOF
     do
         peer_name="${peer_pub_file##*/}" # remove path
         peer_name="${peer_name%.pub}" # remove extension
-        peer_name="${peer_name^^}" # to upper
+        peer_name="$(to_upper ${peer_name})" # to upper
 
         WGQ_PEER_ALLOWED_IPS="WGQ_PEER_${peer_name}_ALLOWED_IPS" # build the variable name
 
@@ -369,6 +373,29 @@ function wg_quick_interface() {
 
 # udphole
 
+function udphole_open() {
+    if bash_compat 4 1
+    then
+        exec {UDPHOLE_SOCKET}<>/dev/udp/${1}/${2}
+    else
+        UDPHOLE_SOCKET=100
+        exec 100<>/dev/udp/${1}/${2}
+    fi
+}
+
+function udphole_close() {
+    if bash_compat 4 1
+    then
+        exec {UDPHOLE_SOCKET}<&- || true
+        exec {UDPHOLE_SOCKET}>&- || true
+    else
+        exec 100<&- || true
+        exec 100>&- || true
+    fi
+
+    unset UDPHOLE_SOCKET
+}
+
 function udphole_punch() {
     action="${1}" && shift
     case "${action}" in
@@ -383,9 +410,7 @@ function udphole_punch() {
             ;;
         open)
             debug "udphole_punch open"
-            UDPHOLE_OPEN_PID="${BASHPID}"
-
-            exec {UDPHOLE_SOCKET}<>/dev/udp/${UDPHOLE_HOST}/${UDPHOLE_PORT} \
+            udphole_open ${UDPHOLE_HOST} ${UDPHOLE_PORT} \
                 && echo "" >&${UDPHOLE_SOCKET}
             ;;
         get)
@@ -393,10 +418,10 @@ function udphole_punch() {
             case "${name}" in
                 port)
                     {
-                        lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -p "${UDPHOLE_OPEN_PID}" \
-                            || echo " ${UDPHOLE_OPEN_PID} UDP :0->"
+                        lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -p "${PID}" \
+                            || echo " ${PID} UDP :0->"
                     } | {
-                        grep -m 1 " ${UDPHOLE_OPEN_PID} " | sed "s,.* UDP .*:\(.*\)->.*,\1,"
+                        grep -m 1 " ${PID} " | sed "s,.* UDP .*:\(.*\)->.*,\1,"
                     } | {
                         read -t "${UDPHOLE_READ_TIMEOUT}" port
                         if [[ ${?} -lt 128 ]]
@@ -426,11 +451,7 @@ function udphole_punch() {
             ;;
         close)
             debug "udphole_punch close"
-            exec {UDPHOLE_SOCKET}<&- || true
-            exec {UDPHOLE_SOCKET}>&- || true
-
-            unset UDPHOLE_SOCKET
-            unset UDPHOLE_OPEN_PID
+            udphole_close
             ;;
     esac
 }
