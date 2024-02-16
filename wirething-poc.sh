@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 
+# Basic
+
 # set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
 set -euo pipefail
 
 shopt -s expand_aliases
+
+umask 077
+
+export LC_ALL=C
+
+# Utils
+
 alias sha256sum='sha256sum | cut -f 1 -d " "'
 
 case "${OSTYPE}" in
@@ -16,10 +25,6 @@ case "${OSTYPE}" in
     *)
         die "OS not supported *${OSTYPE}*"
 esac
-
-umask 077
-
-export LC_ALL=C
 
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
 auto_su() {
@@ -320,7 +325,7 @@ function wg_quick_interface() {
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
             WGQ_USERSPACE="${WGQ_USERSPACE:-}"
 
-            WGQ_INTERFACE="wth-${WT_PID}"
+            WGQ_INTERFACE="wth${WT_PID}"
             WGQ_CONFIG_FILE="${WT_EPHEMERAL_PATH}/${WGQ_INTERFACE}.conf"
 
             wg_quick_validate_files
@@ -733,6 +738,8 @@ function wirething() {
 
             if [ "${host_endpoint}" != "" ]
             then
+                info "wirething publish_host_endpoint $(short "${peer_id}") ${host_endpoint}"
+
                 topic="$(topic publish "${host_id}" "${peer_id}")"
                 encrypted_host_endpoint="$(encryption encrypt "${peer_id}" "${host_endpoint}")"
 
@@ -769,6 +776,8 @@ function wirething() {
 
             while read new_peer_endpoint
             do
+                info "wirething on_new_peer_endpoint $(short "${peer_id}") ${new_peer_endpoint}"
+
                 current_peer_endpoint="$(interface get peer_endpoint "${peer_id}")"
 
                 if [[ "${new_peer_endpoint}" != "${current_peer_endpoint}" ]]
