@@ -23,7 +23,7 @@ case "${OSTYPE}" in
         alias base64='base64 -w 0'
         ;;
     *)
-        die "OS not supported *${OSTYPE}*"
+        die "OS *${OSTYPE}* not supported"
 esac
 
 function to_upper() {
@@ -403,7 +403,7 @@ function wg_quick_interface() {
                     WG_INTERFACE="${WGQ_INTERFACE}"
                     ;;
                 *)
-                    die "OS not supported *${OSTYPE}*"
+                    die "OS *${OSTYPE}* not supported"
             esac
             wg_interface init
             ;;
