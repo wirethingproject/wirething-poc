@@ -756,13 +756,19 @@ function wirething() {
             ;;
         punch_host_endpoint)
             debug "wirething punch_host_endpoint"
-            udphole_punch open && {
-                host_port="$(udphole_punch get port)"
-                host_endpoint="$(udphole_punch get endpoint)"
-                udphole_punch close
+            punch open && {
+                host_port="$(punch get port)"
+                host_endpoint="$(punch get endpoint)"
 
-                interface set host_port "${host_port}"
-                wirething set host_endpoint "${host_endpoint}"
+                punch close
+
+                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                then
+                    interface set host_port "${host_port}"
+                    wirething set host_endpoint "${host_endpoint}"
+                else
+                    error "wirething set host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
+                fi
             }
             ;;
         broadcast_host_endpoint)
