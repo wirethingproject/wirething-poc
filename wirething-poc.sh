@@ -72,6 +72,57 @@ function log_dev() {
     fi
 }
 
+# Bash Compat UDP
+
+function udp() {
+    action="${1}" && shift
+    case "${action}" in
+        open)
+            host="${1}" && shift
+            port="${1}" && shift
+
+            if bash_compat 4 1
+            then
+                exec {UDP_SOCKET}<>/dev/udp/${host}/${port}
+            else
+                UDP_SOCKET=100
+                exec 100<>/dev/udp/${host}/${port}
+            fi
+            ;;
+        close)
+            if bash_compat 4 1
+            then
+                exec {UDP_SOCKET}<&- || true
+                exec {UDP_SOCKET}>&- || true
+            else
+                exec 100<&- || true
+                exec 100>&- || true
+            fi
+
+            unset UDP_SOCKET
+            ;;
+        port)
+            host="${1}" && shift
+            port="${1}" && shift
+            pid="${1}" && shift
+
+            {
+                lsof -P -n -i "udp@${host}:${port}" -a -p "${pid}" \
+                    || echo " ${pid} UDP :0->"
+            } | {
+                grep -m 1 " ${pid} " | sed "s,.* UDP .*:\(.*\)->.*,\1,"
+            }
+            ;;
+        writeline)
+            line="${1}" && shift
+            echo "${line}" >&${UDP_SOCKET}
+            ;;
+        readline)
+            head -n 1 <&${UDP_SOCKET} || true
+            ;;
+    esac
+}
+
 # log
 
 function log_default_time() {
@@ -373,29 +424,6 @@ function wg_quick_interface() {
 
 # udphole
 
-function udphole_open() {
-    if bash_compat 4 1
-    then
-        exec {UDPHOLE_SOCKET}<>/dev/udp/${1}/${2}
-    else
-        UDPHOLE_SOCKET=100
-        exec 100<>/dev/udp/${1}/${2}
-    fi
-}
-
-function udphole_close() {
-    if bash_compat 4 1
-    then
-        exec {UDPHOLE_SOCKET}<&- || true
-        exec {UDPHOLE_SOCKET}>&- || true
-    else
-        exec 100<&- || true
-        exec 100>&- || true
-    fi
-
-    unset UDPHOLE_SOCKET
-}
-
 function udphole_punch() {
     action="${1}" && shift
     case "${action}" in
@@ -410,18 +438,15 @@ function udphole_punch() {
             ;;
         open)
             debug "udphole_punch open"
-            udphole_open ${UDPHOLE_HOST} ${UDPHOLE_PORT} \
-                && echo "" >&${UDPHOLE_SOCKET}
+            udp open ${UDPHOLE_HOST} ${UDPHOLE_PORT} \
+                && udp writeline ""
             ;;
         get)
             name="${1}" && shift
             case "${name}" in
                 port)
                     {
-                        lsof -P -n -i "udp@${UDPHOLE_HOST}:${UDPHOLE_PORT}" -a -p "${PID}" \
-                            || echo " ${PID} UDP :0->"
-                    } | {
-                        grep -m 1 " ${PID} " | sed "s,.* UDP .*:\(.*\)->.*,\1,"
+                        udp port ${UDPHOLE_HOST} ${UDPHOLE_PORT} ${PUNCH_PID}
                     } | {
                         read -t "${UDPHOLE_READ_TIMEOUT}" port
                         if [[ ${?} -lt 128 ]]
@@ -430,12 +455,13 @@ function udphole_punch() {
                             echo "${port}"
                         else
                             error "udphole_punch get port timed out"
+                            echo ""
                         fi
                     }
                     ;;
                 endpoint)
                     {
-                        head -n 1 <&${UDPHOLE_SOCKET} || true
+                        udp readline
                     } | {
                         read -t "${UDPHOLE_READ_TIMEOUT}" endpoint
                         if [[ ${?} -lt 128 ]]
@@ -444,6 +470,7 @@ function udphole_punch() {
                             echo "${endpoint}"
                         else
                             error "udphole_punch get endpoint timed out"
+                            echo ""
                         fi
                     }
                     ;;
@@ -451,7 +478,7 @@ function udphole_punch() {
             ;;
         close)
             debug "udphole_punch close"
-            udphole_close
+            udp close
             ;;
     esac
 }
@@ -835,7 +862,7 @@ function interval_based_punch_usecase() {
             debug "interval_based_punch_usecase start $(short "${host_id}") delay ${WT_INTERVAL_BASED_PUNCH_START_DELAY}"
             sleep "${WT_INTERVAL_BASED_PUNCH_START_DELAY}"
 
-            PID="$(cat "${WT_INTERVAL_BASED_PUNCH_PID_FILE}")"
+            PUNCH_PID="$(cat "${WT_INTERVAL_BASED_PUNCH_PID_FILE}")"
 
             while true
             do
