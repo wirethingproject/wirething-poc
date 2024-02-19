@@ -855,7 +855,7 @@ function interval_based_punch_usecase() {
         init)
             debug "interval_based_punch_usecase init"
             WT_INTERVAL_BASED_PUNCH_ENABLED="${WT_INTERVAL_BASED_PUNCH_ENABLED:-true}"
-            WT_INTERVAL_BASED_PUNCH_START_DELAY="${WT_INTERVAL_BASED_PUNCH_START_DELAY:-10}" # 10 seconds
+            WT_INTERVAL_BASED_PUNCH_START_DELAY="${WT_INTERVAL_BASED_PUNCH_START_DELAY:-5}" # 5 seconds
             WT_INTERVAL_BASED_PUNCH_INTERVAL="${WT_INTERVAL_BASED_PUNCH_INTERVAL:-3600}" # 1 hour
             WT_INTERVAL_BASED_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/interval_based_punch_usecase.pid"
             ;;
