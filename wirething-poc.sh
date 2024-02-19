@@ -379,6 +379,11 @@ function wg_quick_interface() {
         deps)
             wg_interface deps
             echo "wg-quick cat grep rm"
+            case "${OSTYPE}" in
+                darwin*)
+                    echo "wireguard-go"
+                    ;;
+            esac
             ;;
         init)
             debug "wg_quick_interface init"
