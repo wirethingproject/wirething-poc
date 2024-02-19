@@ -13,6 +13,10 @@ export LC_ALL=C
 
 # Utils
 
+function base_deps() {
+    echo "bash tr readlink sudo sha256sum base64 date grep sed cat"
+}
+
 alias sha256sum='sha256sum | cut -f 1 -d " "'
 
 case "${OSTYPE}" in
@@ -77,6 +81,9 @@ function log_dev() {
 function udp() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "lsof grep sed head"
+            ;;
         open)
             host="${1}" && shift
             port="${1}" && shift
@@ -204,6 +211,9 @@ function wg_interface() {
     case "${action}" in
         protocol)
             echo "udp"
+            ;;
+        deps)
+            echo "wg grep cut sed"
             ;;
         init)
             debug "wg_interface init"
@@ -366,6 +376,10 @@ function wg_quick_interface() {
         protocol)
             echo "udp"
             ;;
+        deps)
+            wg_interface deps
+            echo "wg-quick cat grep rm"
+            ;;
         init)
             debug "wg_quick_interface init"
 
@@ -430,6 +444,9 @@ function udphole_punch() {
         protocol)
             echo "udp"
             ;;
+        deps)
+            udp deps
+            ;;
         init)
             debug "udphole_punch init"
             UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
@@ -488,6 +505,9 @@ function udphole_punch() {
 function ntfy_pubsub() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "curl sleep hexdump"
+            ;;
         init)
             debug "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
@@ -561,6 +581,9 @@ function ntfy_pubsub() {
 function disabled_encryption() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "base64"
+            ;;
         encrypt)
             id="${1}" && shift
             data="${1}" && shift
@@ -579,6 +602,9 @@ function disabled_encryption() {
 function gpg_ephemeral_encryption() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "gpg mkdir grep cut sed gpgconf rm base64"
+            ;;
         init)
             debug "gpg_ephemeral_encryption init"
 
@@ -651,6 +677,9 @@ function wirething_topic_hash_values() {
 function wirething_topic() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "sha256sum"
+            ;;
         init)
             debug "wirething_topic init"
             WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
@@ -700,6 +729,9 @@ topic ""        || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(opt
 function wirething() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "mkdir touch cat hexdump"
+            ;;
         init)
             debug "wirething init"
             WT_STATE="${WT_EPHEMERAL_PATH}/state"
@@ -852,6 +884,9 @@ function wirething() {
 function interval_based_punch_usecase() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "cat sleep"
+            ;;
         init)
             debug "interval_based_punch_usecase init"
             WT_INTERVAL_BASED_PUNCH_ENABLED="${WT_INTERVAL_BASED_PUNCH_ENABLED:-true}"
@@ -896,6 +931,9 @@ function interval_based_punch_usecase() {
 function always_on_peer_subscribe_usecase() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            echo "sleep"
+            ;;
         init)
             WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-true}"
             WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_PEER_START_DELAY:-1}" # 1 second
@@ -951,6 +989,23 @@ function wt_type_for_each() {
 function wirething_main() {
     action="${1}" && shift
     case "${action}" in
+        deps)
+            {
+                base_deps
+                echo "mkdir rm sed sort uniq"
+                wt_type_for_each deps
+            } | sed "s, ,\n,g" | sort | uniq | {
+                while read dep
+                do
+                    if type -a "${dep}" > /dev/null
+                    then
+                        echo "${dep}: Found"
+                    else
+                        echo "${dep}: NOT found"
+                    fi
+                done
+            }
+            ;;
         init)
             debug "wirething_main init"
 
@@ -1045,4 +1100,10 @@ function main() {
     wirething_main wait
 }
 
-main
+case "${1}" in
+    deps)
+        wirething_main deps
+        ;;
+    *)
+        main
+esac
