@@ -742,6 +742,7 @@ function wirething() {
             case "${name}" in
                 host_endpoint)
                     endpoint="${1}" && shift
+                    info "wirething set host_endpoint ${endpoint}"
                     echo "${endpoint}" > "${WT_HOST_ENDPOINT_FILE}"
                     ;;
             esac
@@ -750,7 +751,9 @@ function wirething() {
             name="${1}" && shift
             case "${name}" in
                 host_endpoint)
-                    cat "${WT_HOST_ENDPOINT_FILE}"
+                    endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}")"
+                    info "wirething get host_endpoint ${endpoint}"
+                    echo "${endpoint}"
                     ;;
             esac
             ;;
@@ -876,10 +879,10 @@ function interval_based_punch_usecase() {
                 then
                     wirething broadcast_host_endpoint "${host_id}" "${peer_id_list}" &
 
-                    debug "interval_based_punch_usecase starting $(short "${host_id}") interval ${WT_INTERVAL_BASED_PUNCH_INTERVAL} seconds"
+                    info "interval_based_punch_usecase starting $(short "${host_id}") interval ${WT_INTERVAL_BASED_PUNCH_INTERVAL} seconds"
                     sleep "${WT_INTERVAL_BASED_PUNCH_INTERVAL}"
                 else
-                    debug "interval_based_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                    info "interval_based_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
                     sleep "${WT_PAUSE_AFTER_ERROR}"
                 fi
             done
