@@ -666,6 +666,87 @@ function gpg_ephemeral_encryption() {
     esac
 }
 
+# totp topic
+
+function totp_interval() {
+    cat <<<"$(($(epoch) / ${TOTP_PERIOD}))"
+}
+
+function totp_secret() {
+    {
+        base64 -d <<<"${!1}"
+        base64 -d <<<"${!2}"
+    } | openssl sha256 -binary | base64
+}
+
+function totp_digest() {
+    # License: BSD-3-Clause
+    # Source: https://github.com/fmierlo/otp/
+
+    read -r interval
+    read -r secret
+
+    {
+        cat <<<"${interval}"
+    } | {
+        # int2hex
+        read int
+        printf "%016X\n" "${int}"
+    } | {
+        # hex2bin
+        read hex
+        echo -ne "$(sed "s,..,\\\x&,g" <<<"${hex}")"
+    } | {
+        # digest
+        openssl dgst -"${TOTP_ALGORITHM}" -hmac "$(base64 -d <<<"${secret}")" \
+            | sed "s,.* ,,"
+    }
+}
+
+function totp_token() {
+    read digest
+    # Read the last 4 bits and convert it into an unsigned integer.
+    start="$(( 0x${digest:(-1)} * 2))"
+    # Read a 32-bit positive integer and take at most six rightmost digits.
+    token="$(( ((0x${digest:${start}:8}) & 0x7FFFFFFF) % $((10 ** ${TOTP_DIGITS})) ))"
+    # Pad the token number with leading zeros if needed.
+    printf "%0${TOTP_DIGITS}d\n" "${token}"
+}
+
+function totp_topic() {
+    action="${1}" && shift
+    case "${action}" in
+        deps)
+            echo "cat base64 openssl read printf sed"
+            ;;
+        init)
+            debug "totp_topic init"
+            TOTP_TOKEN="${TOTP_TOKEN:-cat}"
+            TOTP_DIGITS="${TOTP_DIGITS:-6}"
+            TOTP_PERIOD="${TOTP_PERIOD:-3600}"
+            TOTP_ALGORITHM="${TOTP_ALGORITHM:-SHA256}"
+            ;;
+        publish)
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+
+            {
+                totp_interval
+                totp_secret "host_id" "peer_id"
+            } | totp_digest | "${TOTP_TOKEN}"
+            ;;
+        subscribe)
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+
+            {
+                totp_interval
+                totp_secret "peer_id" "host_id"
+            } | totp_digest | "${TOTP_TOKEN}"
+            ;;
+    esac
+}
+
 # basic topic
 
 function wirething_topic_timestamp() {
