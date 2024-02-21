@@ -34,6 +34,10 @@ function to_upper() {
     echo ${1} | tr "[:lower:]" "[:upper:]"
 }
 
+function to_lower() {
+    echo ${1} | tr "[:upper:]" "[:lower:]"
+}
+
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
 auto_su() {
     self="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -669,25 +673,8 @@ function gpg_ephemeral_encryption() {
 # totp topic
 
 function totp_interval() {
-    cat <<<"$(($(epoch) / ${TOTP_PERIOD}))"
-}
-
-function totp_secret() {
     {
-        base64 -d <<<"${!1}"
-        base64 -d <<<"${!2}"
-    } | openssl sha256 -binary | base64
-}
-
-function totp_digest() {
-    # License: BSD-3-Clause
-    # Source: https://github.com/fmierlo/otp/
-
-    read -r interval
-    read -r secret
-
-    {
-        cat <<<"${interval}"
+        cat <<<"$(($(epoch) / ${TOTP_PERIOD}))"
     } | {
         # int2hex
         read int
@@ -696,11 +683,38 @@ function totp_digest() {
         # hex2bin
         read hex
         echo -ne "$(sed "s,..,\\\x&,g" <<<"${hex}")"
-    } | {
-        # digest
-        openssl dgst -"${TOTP_ALGORITHM}" -hmac "$(base64 -d <<<"${secret}")" \
-            | sed "s,.* ,,"
     }
+}
+
+function totp_secret() {
+    {
+        base64 -d <<<"${!1}"
+        base64 -d <<<"${!2}"
+    } | openssl sha256 -binary
+}
+
+function totp_hmac_digest_python_src() {
+    cat <<EOF
+import sys, hmac, hashlib
+
+with open(sys.argv[1], mode="rb") as key:
+    h = hmac.new(key.read(), sys.stdin.buffer.read(), hashlib.$(to_lower "${TOTP_ALGORITHM}"))
+    print(h.hexdigest())
+EOF
+}
+
+function totp_hmac_digest_python() {
+    python3 -c "$(totp_hmac_digest_python_src)" "${1}"
+}
+
+function totp_hmac_digest_openssl() {
+    openssl dgst -"${TOTP_ALGORITHM}" -hmac "$(cat "${1}")" \
+        | sed "s,.* ,,"
+}
+
+
+function totp_digest() {
+    totp_interval | "totp_hmac_digest_${TOTP_HMAC}" <(totp_secret "${1}" "${2}")
 }
 
 function totp_token() {
@@ -717,7 +731,7 @@ function totp_topic() {
     action="${1}" && shift
     case "${action}" in
         deps)
-            echo "cat base64 openssl read printf sed"
+            echo "cat base64 openssl read printf sed python3"
             ;;
         init)
             debug "totp_topic init"
@@ -725,24 +739,19 @@ function totp_topic() {
             TOTP_DIGITS="${TOTP_DIGITS:-6}"
             TOTP_PERIOD="${TOTP_PERIOD:-3600}"
             TOTP_ALGORITHM="${TOTP_ALGORITHM:-SHA256}"
+            TOTP_HMAC="${TOTP_HMAC:-python}"
             ;;
         publish)
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
-            {
-                totp_interval
-                totp_secret "host_id" "peer_id"
-            } | totp_digest | "${TOTP_TOKEN}"
+            totp_digest "host_id" "peer_id" | "${TOTP_TOKEN}"
             ;;
         subscribe)
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
-            {
-                totp_interval
-                totp_secret "peer_id" "host_id"
-            } | totp_digest | "${TOTP_TOKEN}"
+            totp_digest "peer_id" "host_id" | "${TOTP_TOKEN}"
             ;;
     esac
 }
