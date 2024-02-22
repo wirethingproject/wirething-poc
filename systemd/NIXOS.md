@@ -15,7 +15,7 @@
           Type = "simple";
           Restart = "always";
           WorkingDirectory = "<config_path>";
-          EnvironmentFile = "<config_path>/<hostname>.env";
+          EnvironmentFile = "<config_path>/env";
           ExecStart = "<bin_path>/wirething-poc.sh";
         };
       };
