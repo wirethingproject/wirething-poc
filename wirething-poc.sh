@@ -805,7 +805,7 @@ WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg_quick}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE:-gpg_ephemeral}"
-WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-wirething}"
+WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-totp}"
 
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
