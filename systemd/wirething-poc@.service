@@ -10,7 +10,7 @@ Type=simple
 ExecStart=/usr/bin/wirething-poc.sh
 Restart=always
 WorkingDirectory=/etc/wirething/%i
-EnvironmentFile=/etc/wirething/%i/%i.env
+EnvironmentFile=/etc/wirething/%i/env
 
 [Install]
 WantedBy=multi-user.target
