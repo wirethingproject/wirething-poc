@@ -220,7 +220,7 @@ function wg_interface() {
             echo "wg grep cut sed"
             ;;
         init)
-            debug "wg_interface init"
+            info "wg_interface init"
             WG_INTERFACE="${WG_INTERFACE:?Variable not set}"
             WG_HANDSHAKE_TIMEOUT="${WG_HANDSHAKE_TIMEOUT:-125}" # 125 seconds
             ;;
@@ -390,7 +390,7 @@ function wg_quick_interface() {
             esac
             ;;
         init)
-            debug "wg_quick_interface init"
+            info "wg_quick_interface init"
 
             WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
             WGQ_PEER_PUBLIC_KEY_FILE_LIST="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
@@ -457,7 +457,7 @@ function udphole_punch() {
             udp deps
             ;;
         init)
-            debug "udphole_punch init"
+            info "udphole_punch init"
             UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
             UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             UDPHOLE_READ_TIMEOUT="${UDPHOLE_READ_TIMEOUT:-10}" # 10 seconds
@@ -518,7 +518,7 @@ function ntfy_pubsub() {
             echo "curl sleep hexdump"
             ;;
         init)
-            debug "ntfy_pubsub init"
+            info "ntfy_pubsub init"
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-25}" # 25 seconds
@@ -615,7 +615,7 @@ function gpg_ephemeral_encryption() {
             echo "gpg mkdir grep cut sed gpgconf rm base64"
             ;;
         init)
-            debug "gpg_ephemeral_encryption init"
+            info "gpg_ephemeral_encryption init"
 
             export GNUPGHOME="${WT_EPHEMERAL_PATH}/gpg"
 
@@ -734,7 +734,7 @@ function totp_topic() {
             echo "cat base64 openssl read printf sed python3"
             ;;
         init)
-            debug "totp_topic init"
+            info "totp_topic init"
             TOTP_TOKEN="${TOTP_TOKEN:-cat}"
             TOTP_DIGITS="${TOTP_DIGITS:-6}"
             TOTP_PERIOD="${TOTP_PERIOD:-3600}"
@@ -776,7 +776,7 @@ function wirething_topic() {
             echo "sha256sum"
             ;;
         init)
-            debug "wirething_topic init"
+            info "wirething_topic init"
             WT_TOPIC_TAG="${WT_TOPIC_TAG:-wirething}"
             WT_TOPIC_TIMESTAMP_OFFSET="${WT_TOPIC_TIMESTAMP_OFFSET:-3600}" # 60 minutes
             ;;
@@ -828,7 +828,7 @@ function wirething() {
             echo "mkdir touch cat hexdump"
             ;;
         init)
-            debug "wirething init"
+            info "wirething init"
             WT_STATE="${WT_EPHEMERAL_PATH}/state"
             WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
             ;;
@@ -983,7 +983,7 @@ function interval_based_punch_usecase() {
             echo "cat sleep"
             ;;
         init)
-            debug "interval_based_punch_usecase init"
+            info "interval_based_punch_usecase init"
             WT_INTERVAL_BASED_PUNCH_ENABLED="${WT_INTERVAL_BASED_PUNCH_ENABLED:-true}"
             WT_INTERVAL_BASED_PUNCH_START_DELAY="${WT_INTERVAL_BASED_PUNCH_START_DELAY:-5}" # 5 seconds
             WT_INTERVAL_BASED_PUNCH_INTERVAL="${WT_INTERVAL_BASED_PUNCH_INTERVAL:-3600}" # 1 hour
@@ -1102,7 +1102,7 @@ function wirething_main() {
             }
             ;;
         init)
-            debug "wirething_main init"
+            info "wirething_main init"
 
             WT_PID="$(pid)"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
