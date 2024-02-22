@@ -1,0 +1,16 @@
+[Unit]
+Description=Wirething POC for %I
+After=network-online.target nss-lookup.target
+Wants=network-online.target nss-lookup.target
+PartOf=wirething-poc.target
+Documentation=https://www.wirething.org
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wirething-poc.sh
+Restart=always
+WorkingDirectory=/etc/wirething/%i
+EnvironmentFile=/etc/wirething/%i/%i.env
+
+[Install]
+WantedBy=multi-user.target
