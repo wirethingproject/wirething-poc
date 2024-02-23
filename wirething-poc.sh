@@ -351,8 +351,8 @@ function wg_quick_validate_files() {
 function wg_quick_generate_config_file() {
     cat <<EOF
 [Interface]
-PrivateKey = $(cat "${WGQ_HOST_PRIVATE_KEY_FILE}")
 Address = ${WGQ_HOST_ADDRESS}
+PostUp = wg set %i private-key ${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}
 
 EOF
 
@@ -1105,6 +1105,7 @@ function wirething_main() {
             info "wirething_main init"
 
             WT_PID="$(pid)"
+            WT_CONFIG_PATH="${PWD}"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-60}" # 60 seconds
