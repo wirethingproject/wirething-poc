@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Basic
+# basic
 
 # set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
 set -euo pipefail
@@ -11,7 +11,7 @@ umask 077
 
 export LC_ALL=C
 
-# Utils
+# utils
 
 function base_deps() {
     echo "bash tr readlink sudo sha256sum base64 date grep sed cat"
@@ -47,7 +47,7 @@ auto_su() {
         || exec sudo --preserve-env --prompt "${su_prompt}" -- "${BASH}" -- "${self}"
 }
 
-# Bash Compat
+# bash compat
 
 function bash_compat() {
     if [[ (${BASH_VERSINFO[0]} -gt ${1}) ||
@@ -80,7 +80,7 @@ function log_dev() {
     fi
 }
 
-# Bash Compat UDP
+# bash compat udp
 
 function udp() {
     action="${1}" && shift
@@ -208,7 +208,7 @@ function short() {
     echo "${1::8}"
 }
 
-# wireguard
+# wg interface
 
 function wg_interface() {
     action="${1}" && shift
@@ -333,7 +333,7 @@ function wg_interface() {
     esac
 }
 
-# wireguard quick
+# wg quick interface
 
 function wg_quick_validate_files() {
     [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ] \
@@ -445,7 +445,7 @@ function wg_quick_interface() {
     esac
 }
 
-# udphole
+# udphole punch
 
 function udphole_punch() {
     action="${1}" && shift
@@ -509,7 +509,7 @@ function udphole_punch() {
     esac
 }
 
-# ntfy
+# ntfy pubsub
 
 function ntfy_pubsub() {
     action="${1}" && shift
@@ -585,7 +585,7 @@ function ntfy_pubsub() {
     esac
 }
 
-# gpg ephemeral
+# gpg ephemeral encryption
 
 function gpg_ephemeral_encryption() {
     action="${1}" && shift
