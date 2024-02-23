@@ -737,7 +737,7 @@ function totp_topic() {
             info "totp_topic init"
             TOTP_TOKEN="${TOTP_TOKEN:-cat}"
             TOTP_DIGITS="${TOTP_DIGITS:-6}"
-            TOTP_PERIOD="${TOTP_PERIOD:-3600}"
+            TOTP_PERIOD="${TOTP_PERIOD:-28800}" # 8 hours
             TOTP_ALGORITHM="${TOTP_ALGORITHM:-SHA256}"
             TOTP_HMAC="${TOTP_HMAC:-python}"
             ;;
