@@ -1196,9 +1196,11 @@ function main() {
     wirething_main wait
 }
 
-case "${1:-}" in
+case "${1:-${WT_ACTION:-}}" in
     deps)
         wirething_main deps
+        ;;
+    test)
         ;;
     *)
         main
