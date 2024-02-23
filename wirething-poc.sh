@@ -14,14 +14,25 @@ export LC_ALL=C
 # utils
 
 function base_deps() {
-    echo "bash tr readlink sudo sha256sum base64 date grep sed cat"
+    echo "bash tr readlink sudo base64 grep sed cat"
+
+    case "${OSTYPE}" in
+        darwin*)
+            ;;
+        linux*)
+            ;;
+        *)
+            die "OS *${OSTYPE}* not supported"
+    esac
+    if bash_compat 5 0
+    then
+        echo "date"
+    fi
 }
 
-alias sha256sum='sha256sum | cut -f 1 -d " "'
 
 case "${OSTYPE}" in
     darwin*)
-        alias base64='base64'
         ;;
     linux*)
         alias base64='base64 -w 0'
@@ -60,7 +71,12 @@ function bash_compat() {
 }
 
 function epoch() {
-    echo -n "${EPOCHSECONDS:-$(date -u +"%s")}"
+    if bash_compat 5 0
+    then
+        echo -n "${EPOCHSECONDS}"
+    else
+        date -u +"%s"
+    fi
 }
 
 function pid() {
@@ -392,6 +408,13 @@ function wg_quick_interface() {
         init)
             info "wg_quick_interface init"
 
+            if bash_compat 4 0
+            then
+                :
+            else
+                die "Bash < 4.0 not supported"
+            fi
+
             WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
             WGQ_PEER_PUBLIC_KEY_FILE_LIST="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
 
@@ -710,7 +733,7 @@ function totp_topic() {
     action="${1}" && shift
     case "${action}" in
         deps)
-            echo "cat base64 openssl read printf sed python3"
+            echo "cat base64 openssl sed python3"
             ;;
         init)
             info "totp_topic init"
@@ -1011,13 +1034,27 @@ wt_type_list=(
     topic
 )
 
+wt_others_list=(
+    wirething
+    interval_based_punch_usecase
+    always_on_peer_subscribe_usecase
+)
+
 function wt_get_alias() {
-    alias ${i} | cut -f 2 -d "'"
+    alias ${wt_type} | cut -f 2 -d "'"
 }
 
 function wt_type_for_each() {
-    for i in "${wt_type_list[@]}"; do
-        "$(wt_get_alias $i)" "${1}"
+    for wt_type in "${wt_type_list[@]}"
+    do
+        "$(wt_get_alias "${wt_type}")" "${1}"
+    done
+}
+
+function wt_others_for_each() {
+    for wt_other in "${wt_others_list[@]}"
+    do
+        "${wt_other}" "${1}"
     done
 }
 
@@ -1025,19 +1062,24 @@ function wirething_main() {
     action="${1}" && shift
     case "${action}" in
         deps)
+            echo -e "# types\n"
+
+            for wt_type in "${wt_type_list[@]}"
+            do
+                echo -n "${wt_type}: "
+                wt_get_alias "${wt_type}"
+            done
+
             {
-                base_deps
                 echo "mkdir rm sed sort uniq"
+                base_deps
                 wt_type_for_each deps
+                wt_others_for_each deps
             } | sed "s, ,\n,g" | sort | uniq | {
                 while read dep
                 do
-                    if type -a "${dep}" > /dev/null
-                    then
-                        echo "${dep}: Found"
-                    else
-                        echo "${dep}: NOT found"
-                    fi
+                    echo -e "\n# ${dep}\n"
+                    type -a "${dep}" || true
                 done
             }
             ;;
@@ -1051,10 +1093,7 @@ function wirething_main() {
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-60}" # 60 seconds
 
             wt_type_for_each init
-
-            wirething init
-            interval_based_punch_usecase init
-            always_on_peer_subscribe_usecase init
+            wt_others_for_each init
             ;;
         signal)
             signal="${1}" && shift
@@ -1087,7 +1126,7 @@ function wirething_main() {
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             wt_type_for_each up
-            wirething up
+            wt_others_for_each up
 
             host_id="$(interface get host_id)"
             peer_id_list="$(interface get peers_id_list)"
@@ -1101,7 +1140,7 @@ function wirething_main() {
             ;;
         down)
             wt_type_for_each down
-            wirething down
+            wt_others_for_each down
 
             debug "wirething_main down"
             rm -rf "${WT_EPHEMERAL_PATH}" && debug "wirething_main *${WT_EPHEMERAL_PATH}* was deleted"
