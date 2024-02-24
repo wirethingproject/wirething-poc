@@ -8,6 +8,7 @@ without any login two devices behind NAT.
     # macOS
 
     brew install bash gnupg wireguard-tools wireguard-go
+    export PATH=/usr/local/bin:${PATH}
 
     # Setup
     bash
