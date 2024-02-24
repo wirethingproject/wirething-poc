@@ -934,37 +934,48 @@ function wirething() {
                 fi
             done
             ;;
+        listen_peer_endpoint)
+            debug "wirething listen_peer_endpoint"
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+
+            {
+                wirething subscribe_peer_endpoint "${host_id}" "${peer_id}"
+            } | {
+                wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
+            }
+            ;;
     esac
 }
 
-# interval based punch usecase
+# on interval punch usecase
 
-function interval_based_punch_usecase() {
+function on_interval_punch_usecase() {
     action="${1}" && shift
     case "${action}" in
         deps)
             echo "cat sleep"
             ;;
         init)
-            info "interval_based_punch_usecase init"
-            WT_INTERVAL_BASED_PUNCH_ENABLED="${WT_INTERVAL_BASED_PUNCH_ENABLED:-true}"
-            WT_INTERVAL_BASED_PUNCH_START_DELAY="${WT_INTERVAL_BASED_PUNCH_START_DELAY:-5}" # 5 seconds
-            WT_INTERVAL_BASED_PUNCH_INTERVAL="${WT_INTERVAL_BASED_PUNCH_INTERVAL:-3600}" # 1 hour
-            WT_INTERVAL_BASED_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/interval_based_punch_usecase.pid"
+            info "on_interval_punch_usecase init"
+            WT_ON_INTERVAL_PUNCH_ENABLED="${WT_ON_INTERVAL_PUNCH_ENABLED:-true}"
+            WT_ON_INTERVAL_PUNCH_START_DELAY="${WT_ON_INTERVAL_PUNCH_START_DELAY:-5}" # 5 seconds
+            WT_ON_INTERVAL_PUNCH_INTERVAL="${WT_ON_INTERVAL_PUNCH_INTERVAL:-3600}" # 1 hour
+            WT_ON_INTERVAL_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/on_interval_punch_usecase.pid"
             ;;
         start)
-            if [[ "${WT_INTERVAL_BASED_PUNCH_ENABLED}" == "true" ]]
+            if [[ "${WT_ON_INTERVAL_PUNCH_ENABLED}" == "true" ]]
             then
-                debug "interval_based_punch_usecase start $(short "${host_id}")"
-                interval_based_punch_usecase loop &
-                echo "${!}" > "${WT_INTERVAL_BASED_PUNCH_PID_FILE}"
+                debug "on_interval_punch_usecase start $(short "${host_id}")"
+                on_interval_punch_usecase loop &
+                echo "${!}" > "${WT_ON_INTERVAL_PUNCH_PID_FILE}"
             fi
             ;;
         loop)
-            debug "interval_based_punch_usecase start $(short "${host_id}") delay ${WT_INTERVAL_BASED_PUNCH_START_DELAY}"
-            sleep "${WT_INTERVAL_BASED_PUNCH_START_DELAY}"
+            debug "on_interval_punch_usecase start $(short "${host_id}") delay ${WT_ON_INTERVAL_PUNCH_START_DELAY}"
+            sleep "${WT_ON_INTERVAL_PUNCH_START_DELAY}"
 
-            PUNCH_PID="$(cat "${WT_INTERVAL_BASED_PUNCH_PID_FILE}")"
+            PUNCH_PID="$(cat "${WT_ON_INTERVAL_PUNCH_PID_FILE}")"
 
             while true
             do
@@ -972,14 +983,14 @@ function interval_based_punch_usecase() {
                 then
                     wirething broadcast_host_endpoint "${host_id}" "${peer_id_list}" &
 
-                    info "interval_based_punch_usecase starting $(short "${host_id}") interval ${WT_INTERVAL_BASED_PUNCH_INTERVAL} seconds"
-                    sleep "${WT_INTERVAL_BASED_PUNCH_INTERVAL}"
+                    info "on_interval_punch_usecase starting $(short "${host_id}") interval ${WT_ON_INTERVAL_PUNCH_INTERVAL} seconds"
+                    sleep "${WT_ON_INTERVAL_PUNCH_INTERVAL}"
                 else
-                    info "interval_based_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                    info "on_interval_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
                     sleep "${WT_PAUSE_AFTER_ERROR}"
                 fi
             done
-            debug "interval_based_punch_usecase end $(short "${host_id}")"
+            debug "on_interval_punch_usecase end $(short "${host_id}")"
             ;;
     esac
 }
@@ -1010,11 +1021,7 @@ function always_on_peer_subscribe_usecase() {
 
             while true
             do
-                {
-                    wirething subscribe_peer_endpoint "${host_id}" "${peer_id}"
-                } | {
-                    wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
-                }
+                wirething listen_peer_endpoint "${host_id}" "${peer_id}"
 
                 debug "always_on_peer_subscribe_usecase subscribe starting $(short "${peer_id}") interval ${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL} seconds"
                 sleep "${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL}"
@@ -1036,7 +1043,7 @@ wt_type_list=(
 
 wt_others_list=(
     wirething
-    interval_based_punch_usecase
+    on_interval_punch_usecase
     always_on_peer_subscribe_usecase
 )
 
@@ -1150,7 +1157,7 @@ function wirething_main() {
             host_id="$(interface get host_id)"
             peer_id_list="$(interface get peers_id_list)"
 
-            interval_based_punch_usecase start
+            on_interval_punch_usecase start
 
             for peer_id in ${peer_id_list}
             do
