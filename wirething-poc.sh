@@ -1113,7 +1113,7 @@ function wirething_main() {
                     # Set trap to empty to run only once
                     trap "" ${signal}
                     wirething_main down
-                    kill 0
+                    exit 0
                     ;;
             esac
             ;;
