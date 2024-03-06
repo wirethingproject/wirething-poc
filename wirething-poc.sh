@@ -966,7 +966,7 @@ function on_interval_punch_usecase() {
         start)
             if [[ "${WT_ON_INTERVAL_PUNCH_ENABLED}" == "true" ]]
             then
-                debug "on_interval_punch_usecase start $(short "${host_id}")"
+                info "on_interval_punch_usecase start $(short "${host_id}")"
                 on_interval_punch_usecase loop &
                 echo "${!}" > "${WT_ON_INTERVAL_PUNCH_PID_FILE}"
             fi
@@ -1011,7 +1011,7 @@ function always_on_peer_subscribe_usecase() {
         start)
             if [[ "${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED}" == "true" ]]
             then
-                debug "always_on_peer_subscribe_usecase start $(short "${peer_id}")"
+                info "always_on_peer_subscribe_usecase start $(short "${peer_id}")"
                 always_on_peer_subscribe_usecase loop &
             fi
             ;;
