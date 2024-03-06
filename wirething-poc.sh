@@ -1004,9 +1004,10 @@ function always_on_peer_subscribe_usecase() {
             echo "sleep"
             ;;
         init)
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-true}"
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_PEER_START_DELAY:-1}" # 1 second
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL="${WT_PEER_INTERVAL:-5}" # 5 second
+            info "always_on_peer_subscribe_usecase init"
+            WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-false}"
+            WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY:-1}" # 1 second
+            WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL="${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL:-5}" # 5 second
             ;;
         start)
             if [[ "${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED}" == "true" ]]
