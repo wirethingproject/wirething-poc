@@ -233,7 +233,7 @@ function wg_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg grep cut sed"
+            echo "wg grep cut sed sort tail"
             ;;
         init)
             info "wg_interface init"
@@ -300,23 +300,23 @@ function wg_interface() {
                         echo "${endpoint}"
                     }
                     ;;
-                latest_handshakes)
-                    peer="${1}" && shift
+                latest_handshake)
+                    peer="${1:-}" && shift
 
                     {
                         wg show "${WG_INTERFACE}" latest-handshakes
                     } | {
-                        grep "${peer}" | cut -f 2
+                        grep "${peer}" | cut -f 2 | sort -n | tail -n 1
                     } | {
                         read handshake
-                        info "wg_interface get latest_handshakes $(short "${peer}") ${handshake}"
+                        info "wg_interface get latest_handshake $(short "${peer:-latest}") ${handshake}"
                         echo "${handshake}"
                     }
                     ;;
                 handshake_timeout)
-                    peer="${1}" && shift
+                    peer="${1:-}" && shift
 
-                    last_handshake="$(interface get latest_handshakes "${peer_id}")"
+                    last_handshake="$(interface get latest_handshake "${peer}")"
                     handshake_timeout="$(($(epoch) - ${last_handshake} - ${WG_HANDSHAKE_TIMEOUT}))"
 
                     if [[ ${handshake_timeout} -gt 0 ]]
@@ -326,7 +326,7 @@ function wg_interface() {
                         result="false"
                     fi
 
-                    info "wg_interface get handshake_timeout $(short "${peer}") ${result}"
+                    info "wg_interface get handshake_timeout $(short "${peer:-latest}") ${result}"
                     echo "${result}"
                     ;;
             esac
