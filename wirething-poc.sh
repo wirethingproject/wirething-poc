@@ -14,7 +14,7 @@ export LC_ALL=C
 # utils
 
 function base_deps() {
-    echo "bash tr readlink sudo base64 grep sed cat"
+    echo "bash tr readlink sudo base64 grep sed cat openssl"
 
     case "${OSTYPE}" in
         darwin*)
@@ -47,6 +47,10 @@ function to_upper() {
 
 function to_lower() {
     echo ${1} | tr "[:upper:]" "[:lower:]"
+}
+
+function hash_id() {
+    echo "${1}" | openssl sha256 | sed "s,.* ,,"
 }
 
 # auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
@@ -222,10 +226,6 @@ function die() {
 
 function short() {
     echo "${1::8}"
-}
-
-function hash_id() {
-    echo "${1}" | openssl sha256 | sed "s,.* ,,"
 }
 
 # wg interface
