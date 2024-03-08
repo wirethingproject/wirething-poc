@@ -1234,7 +1234,7 @@ function wirething_main() {
             for signal in SIGHUP SIGINT SIGQUIT SIGILL SIGTRAP SIGABRT \
                 SIGFPE SIGKILL SIGBUS SIGSEGV SIGSYS SIGPIPE SIGALRM SIGTERM \
                 SIGURG SIGSTOP SIGTSTP SIGCONT SIGTTIN SIGTTOU SIGIO \
-                SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGWINCH SIGUSR1 \
+                SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGUSR1 \
                 SIGUSR2 EXIT
             do
                 trap "wirething_main signal ${signal} ${?:-null}" "${signal}"
