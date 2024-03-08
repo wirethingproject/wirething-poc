@@ -1037,6 +1037,8 @@ function on_interval_punch_usecase() {
                 info "on_interval_punch_usecase start $(short "${host_id}")"
                 on_interval_punch_usecase loop &
                 echo "${!}" > "${WT_ON_INTERVAL_PUNCH_PID_FILE}"
+            else
+                info "on_interval_punch_usecase disabled $(short "${host_id}")"
             fi
             ;;
         loop)
@@ -1139,6 +1141,8 @@ function always_on_peer_subscribe_usecase() {
             then
                 info "always_on_peer_subscribe_usecase start $(short "${peer_id}")"
                 always_on_peer_subscribe_usecase loop &
+            else
+                info "always_on_peer_subscribe_usecase disabled $(short "${peer_id}")"
             fi
             ;;
         loop)
@@ -1178,6 +1182,8 @@ function on_demand_peer_subscribe_usecase() {
             then
                 info "on_demand_peer_subscribe_usecase start $(short "${peer_id}")"
                 on_demand_peer_subscribe_usecase loop &
+            else
+                info "on_demand_peer_subscribe_usecase disabled $(short "${peer_id}")"
             fi
             ;;
         loop)
