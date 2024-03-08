@@ -224,6 +224,10 @@ function short() {
     echo "${1::8}"
 }
 
+function hash_id() {
+    echo "${1}" | openssl sha256 | sed "s,.* ,,"
+}
+
 # wg interface
 
 function wg_interface() {
@@ -893,7 +897,7 @@ function wirething() {
                     peer_id="${1}" && shift
                     endpoint="${1}" && shift
                     info "wirething set peer_endpoint $(short "${peer_id}") ${endpoint}"
-                    echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/${peer_id}"
+                    echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")"
                     ;;
             esac
             ;;
@@ -911,7 +915,7 @@ function wirething() {
                     echo "${endpoint}"
                     ;;
                 peer_endpoint)
-                    endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_id}" || echo)"
+                    endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" || echo)"
                     info "wirething get peer_endpoint $(short "${peer_id}") ${endpoint}"
                     echo "${endpoint}"
                     ;;
