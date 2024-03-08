@@ -1063,6 +1063,63 @@ function on_interval_punch_usecase() {
     esac
 }
 
+# on handshake timeout punch usecase
+
+function on_handshake_timeout_punch_usecase() {
+    action="${1}" && shift
+    case "${action}" in
+        deps)
+            echo "cat sleep"
+            ;;
+        init)
+            info "on_handshake_timeout_punch_usecase init"
+            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED:-true}"
+            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY:-15}" # 15 seconds
+            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL:-15}" # 15 seconds
+            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_MAX_BROADCAST_DAY="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_MAX_BROADCAST_DAY:-250}"
+            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/on_handshake_timeout_punch_usecase.pid"
+            ;;
+        start)
+            if [[ "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED}" == "true" ]]
+            then
+                info "on_handshake_timeout_punch_usecase start $(short "${host_id}")"
+                on_handshake_timeout_punch_usecase loop &
+                echo "${!}" > "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE}"
+            else
+                info "on_handshake_timeout_punch_usecase disabled $(short "${host_id}")"
+            fi
+            ;;
+        loop)
+            debug "on_handshake_timeout_punch_usecase start $(short "${host_id}") delay ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY}"
+            sleep "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY}"
+
+            PUNCH_PID="$(cat "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE}")"
+            SECONDS_DAY="$((24 * 60 * 60))"
+            BROADCAST_INTERVAL="$(("${SECONDS_DAY}" / "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_MAX_BROADCAST_DAY}" * "${peer_id_count}" ))"
+
+            while true
+            do
+                if [ "$(interface get handshake_timeout "")" == "true" ]
+                then
+                    if wirething punch_host_endpoint
+                    then
+                        wirething broadcast_host_endpoint "${host_id}" "${peer_id_list}" &
+                        info "on_handshake_timeout_punch_usecase broadcast_host_endpoint $(short "${host_id}") interval ${BROADCAST_INTERVAL} seconds before next broadcast"
+                        sleep "${BROADCAST_INTERVAL}"
+                    else
+                        info "on_handshake_timeout_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                        sleep "${WT_PAUSE_AFTER_ERROR}"
+                    fi
+                else
+                    debug "on_handshake_timeout_punch_usecase handshake_timeout $(short "${host_id}") interval ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL} seconds"
+                    sleep "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL}"
+                fi
+            done
+            debug "on_handshake_timeout_punch_usecase end $(short "${host_id}")"
+            ;;
+    esac
+}
+
 # always on peer subscribe usecase
 
 function always_on_peer_subscribe_usecase() {
@@ -1154,6 +1211,7 @@ wt_type_list=(
 wt_others_list=(
     wirething
     on_interval_punch_usecase
+    on_handshake_timeout_punch_usecase
     always_on_peer_subscribe_usecase
     on_demand_peer_subscribe_usecase
 )
@@ -1189,7 +1247,7 @@ function wirething_main() {
             done
 
             {
-                echo "mkdir rm sed sort uniq"
+                echo "mkdir rm sed sort uniq wc"
                 base_deps
                 wt_type_for_each deps
                 wt_others_for_each deps
@@ -1248,6 +1306,7 @@ function wirething_main() {
 
             host_id="$(interface get host_id)"
             peer_id_list="$(interface get peers_id_list)"
+            peer_id_count="$(interface get peers_id_list | wc -l)"
 
             wirething up_host "${host_id}"
 
@@ -1269,6 +1328,7 @@ function wirething_main() {
             peer_id_list="$(interface get peers_id_list)"
 
             on_interval_punch_usecase start
+            on_handshake_timeout_punch_usecase start
 
             for peer_id in ${peer_id_list}
             do
