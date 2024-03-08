@@ -826,8 +826,10 @@ function wirething() {
             ;;
         init)
             info "wirething init"
-            WT_STATE="${WT_EPHEMERAL_PATH}/state"
+            WT_STATE="${WT_CONFIG_PATH}/state"
+            WT_HOST_PORT_FILE="${WT_STATE}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
+            WT_PEER_ENDPOINT_PATH="${WT_STATE}/peer_endpoint"
             ;;
         up)
             debug "wirething up"
@@ -838,7 +840,9 @@ function wirething() {
                 || true
 
             mkdir -p "${WT_STATE}"
+            touch "${WT_HOST_PORT_FILE}"
             touch "${WT_HOST_ENDPOINT_FILE}"
+            mkdir -p "${WT_PEER_ENDPOINT_PATH}"
             ;;
         up_host)
             debug "wirething up_host"
@@ -851,6 +855,12 @@ function wirething() {
             [ "${value}" != "${decrypted_value}" ] \
                 && die "Host ${host_id} could not encrypt and decrypt data" \
                 || true
+
+            host_port="$(wirething get host_port)"
+            if [ "${host_port}" != "" ]
+            then
+                interface set host_port "${host_port}"
+            fi
             ;;
         up_peer)
             debug "wirething up_peer"
@@ -860,23 +870,49 @@ function wirething() {
             encryption encrypt "${peer_id}" "${value}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
                 || die "Peer ${peer_id} could not encrypt data"
 
+            peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
+            if [ "${peer_endpoint}" != "" ]
+            then
+                interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
+            fi
             ;;
         set)
             name="${1}" && shift
             case "${name}" in
+                host_port)
+                    port="${1}" && shift
+                    info "wirething set host_port ${port}"
+                    echo "${port}" > "${WT_HOST_PORT_FILE}"
+                    ;;
                 host_endpoint)
                     endpoint="${1}" && shift
                     info "wirething set host_endpoint ${endpoint}"
                     echo "${endpoint}" > "${WT_HOST_ENDPOINT_FILE}"
+                    ;;
+                peer_endpoint)
+                    peer_id="${1}" && shift
+                    endpoint="${1}" && shift
+                    info "wirething set peer_endpoint $(short "${peer_id}") ${endpoint}"
+                    echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/${peer_id}"
                     ;;
             esac
             ;;
         get)
             name="${1}" && shift
             case "${name}" in
+                host_port)
+                    port="$(cat "${WT_HOST_PORT_FILE}" || echo)"
+                    info "wirething get host_port ${port}"
+                    echo "${port}"
+                    ;;
                 host_endpoint)
-                    endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}")"
+                    endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" || echo)"
                     info "wirething get host_endpoint ${endpoint}"
+                    echo "${endpoint}"
+                    ;;
+                peer_endpoint)
+                    endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_id}" || echo)"
+                    info "wirething get peer_endpoint $(short "${peer_id}") ${endpoint}"
                     echo "${endpoint}"
                     ;;
             esac
@@ -892,6 +928,7 @@ function wirething() {
                 if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
                 then
                     interface set host_port "${host_port}"
+                    wirething set host_port "${host_port}"
                     wirething set host_endpoint "${host_endpoint}"
                 else
                     error "wirething set host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
@@ -987,6 +1024,7 @@ function wirething() {
                 if [[ "${new_peer_endpoint}" != "${current_peer_endpoint}" ]]
                 then
                     interface set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
+                    wirething set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
                     wirething publish_host_endpoint "${host_id}" "${peer_id}"
                 fi
             done
