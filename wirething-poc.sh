@@ -545,7 +545,7 @@ function ntfy_pubsub() {
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-25}" # 25 seconds
-            NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-600}" # 10 minutes
+            NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-720}" # 12 minutes
             NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-${WT_PAUSE_AFTER_ERROR}}" # ${WT_PAUSE_AFTER_ERROR} seconds
             ;;
         publish)
@@ -1073,7 +1073,7 @@ function always_on_peer_subscribe_usecase() {
             ;;
         init)
             info "always_on_peer_subscribe_usecase init"
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-false}"
+            WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-true}"
             WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY:-1}" # 1 second
             WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL="${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL:-5}" # 5 second
             ;;
@@ -1112,7 +1112,7 @@ function on_demand_peer_subscribe_usecase() {
             ;;
         init)
             info "on_demand_peer_subscribe_usecase init"
-            WT_ON_DEMAND_PEER_SUBSCRIBE_ENABLED="${WT_ON_DEMAND_PEER_SUBSCRIBE_ENABLED:-true}"
+            WT_ON_DEMAND_PEER_SUBSCRIBE_ENABLED="${WT_ON_DEMAND_PEER_SUBSCRIBE_ENABLED:-false}"
             WT_ON_DEMAND_PEER_SUBSCRIBE_START_DELAY="${WT_ON_DEMAND_PEER_SUBSCRIBE_START_DELAY:-1}" # 1 second
             WT_ON_DEMAND_PEER_SUBSCRIBE_INTERVAL="${WT_ON_DEMAND_PEER_SUBSCRIBE_INTERVAL:-60}" # 60 second
             ;;
@@ -1132,7 +1132,7 @@ function on_demand_peer_subscribe_usecase() {
                 then
                     wirething listen_peer_endpoint "${host_id}" "${peer_id}"
                 else
-                    debug "on_demand_peer_subscribe_usecase handshake_timeout $(short "${peer_id}") interval ${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL} seconds"
+                    debug "on_demand_peer_subscribe_usecase handshake_timeout $(short "${peer_id}") interval ${WT_ON_DEMAND_PEER_SUBSCRIBE_INTERVAL} seconds"
                     sleep "${WT_ON_DEMAND_PEER_SUBSCRIBE_INTERVAL}"
                 fi
             done
@@ -1208,7 +1208,7 @@ function wirething_main() {
             WT_CONFIG_PATH="${PWD}"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
-            WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-60}" # 60 seconds
+            WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
 
             wt_type_for_each init
             wt_others_for_each init
