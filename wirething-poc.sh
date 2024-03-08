@@ -1175,7 +1175,7 @@ function always_on_peer_subscribe_usecase() {
         init)
             info "always_on_peer_subscribe_usecase init"
             WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-true}"
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY:-1}" # 1 second
+            WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY:-25}" # 25 second
             WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL="${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL:-5}" # 5 second
             ;;
         start)
@@ -1191,7 +1191,10 @@ function always_on_peer_subscribe_usecase() {
             debug "always_on_peer_subscribe_usecase start $(short "${peer_id}") delay ${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY}"
             sleep "${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY}"
 
-            wirething fetch_peer_endpoint "${host_id}" "${peer_id}"
+            if [ "$(interface get handshake_timeout "${peer_id}")" == "true" ]
+            then
+                wirething fetch_peer_endpoint "${host_id}" "${peer_id}"
+            fi
 
             while true
             do
