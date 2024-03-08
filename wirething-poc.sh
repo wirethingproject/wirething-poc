@@ -571,6 +571,40 @@ function ntfy_pubsub() {
                 done
             }
             ;;
+        poll)
+            topic="${1}" && shift
+            debug "ntfy_pubsub poll $(short "${topic}")"
+
+            {
+                curl ${NTFY_CURL_OPTIONS} --stderr - \
+                    "${NTFY_URL}/${topic}/raw?poll=1&since=all" \
+                    || echo ""
+            } | tail -n 1 | {
+                while read poll_response
+                do
+                    echo "${poll_response}" | hexdump -C | raw_trace
+
+                    case "${poll_response}" in
+                        "")
+                            ;;
+                        "curl"*"timed out"*)
+                            debug "ntfy_pubsub poll ${poll_response}"
+                            ;;
+                        "curl"*)
+                            error "ntfy_pubsub poll ${poll_response}"
+                            sleep "${NTFY_POLL_PAUSE_AFTER_ERROR}"
+                            ;;
+                        "{"*"error"*)
+                            error "ntfy_pubsub poll ${poll_response}"
+                            sleep "${NTFY_POLL_PAUSE_AFTER_ERROR}"
+                            ;;
+                        *)
+                            info "ntfy_pubsub poll $(short "${topic}") $(short "${poll_response}")"
+                            echo "${poll_response}"
+                    esac
+                done
+            }
+            ;;
         subscribe)
             topic="${1}" && shift
             debug "ntfy_pubsub subscribe $(short "${topic}")"
@@ -893,6 +927,29 @@ function wirething() {
                 pubsub publish "${topic}" "${encrypted_host_endpoint}"
             fi
             ;;
+        poll_peer_endpoint)
+            debug "wirething poll_peer_endpoint"
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+
+            topic="$(topic subscribe "${host_id}" "${peer_id}")"
+
+            {
+                pubsub poll "${topic}"
+            } | {
+                while read encrypted_peer_endpoint
+                do
+                    new_peer_endpoint="$(encryption decrypt "${host_id}" "${encrypted_peer_endpoint}")"
+
+                    echo "${new_peer_endpoint}" | hexdump -C | raw_trace
+
+                    if [ "${new_peer_endpoint}" != "" ]
+                    then
+                        echo "${new_peer_endpoint}"
+                    fi
+                done
+            }
+            ;;
         subscribe_peer_endpoint)
             debug "wirething subscribe_peer_endpoint"
             host_id="${1}" && shift
@@ -933,6 +990,17 @@ function wirething() {
                     wirething publish_host_endpoint "${host_id}" "${peer_id}"
                 fi
             done
+            ;;
+        fetch_peer_endpoint)
+            debug "wirething fetch_peer_endpoint"
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+
+            {
+                wirething poll_peer_endpoint "${host_id}" "${peer_id}"
+            } | {
+                wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
+            }
             ;;
         listen_peer_endpoint)
             debug "wirething listen_peer_endpoint"
@@ -1019,6 +1087,8 @@ function always_on_peer_subscribe_usecase() {
         loop)
             debug "always_on_peer_subscribe_usecase start $(short "${peer_id}") delay ${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY}"
             sleep "${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY}"
+
+            wirething fetch_peer_endpoint "${host_id}" "${peer_id}"
 
             while true
             do
