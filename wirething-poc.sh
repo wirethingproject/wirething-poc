@@ -14,7 +14,7 @@ export LC_ALL=C
 # utils
 
 function base_deps() {
-    echo "bash tr readlink sudo base64 grep sed cat openssl"
+    echo "bash tr readlink sudo base64 grep sed cat openssl ping"
 
     case "${OSTYPE}" in
         darwin*)
@@ -33,8 +33,10 @@ function base_deps() {
 
 case "${OSTYPE}" in
     darwin*)
+        alias ping="ping -c 1 -t 1"
         ;;
     linux*)
+        alias ping="ping -c 1 -W 1"
         alias base64='base64 -w 0'
         ;;
     *)
@@ -237,7 +239,7 @@ function wg_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg grep cut sed sort tail"
+            echo "wg grep cut sed sort tail ping"
             ;;
         init)
             info "wg_interface init"
@@ -304,6 +306,19 @@ function wg_interface() {
                         echo "${endpoint}"
                     }
                     ;;
+                peer_address)
+                    peer="${1}" && shift
+
+                    {
+                        wg show "${WG_INTERFACE}" allowed-ips
+                    } | {
+                        grep "${peer}" | cut -f 2 | sed "s,/32,,"
+                    } | {
+                        read address
+                        info "wg_interface get peer_address $(short "${peer}") ${address}"
+                        echo "${address}"
+                    }
+                    ;;
                 latest_handshake)
                     peer="${1:-}" && shift
 
@@ -331,6 +346,20 @@ function wg_interface() {
                     fi
 
                     info "wg_interface get handshake_timeout $(short "${peer:-latest}") ${result}"
+                    echo "${result}"
+                    ;;
+                peer_online)
+                    peer="${1}" && shift
+                    address="$(interface get peer_address "${peer}")"
+
+                    if ping "${address}" | raw_trace
+                    then
+                        result="true"
+                    else
+                        result="false"
+                    fi
+
+                    info "wg_interface get peer_online $(short "${peer}") ${result}"
                     echo "${result}"
                     ;;
             esac
