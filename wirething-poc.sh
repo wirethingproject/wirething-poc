@@ -1235,12 +1235,12 @@ function peer_offline_usecase() {
                     do
                         wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "1m"
 
-                        debug "peer_offline_usecase subscribe $(short "${peer_id}") fetch interval ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                        debug "peer_offline_usecase fetch $(short "${peer_id}") interval ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
                         sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
                     done
                 fi
 
-                debug "peer_offline_usecase subscribe $(short "${peer_id}") interval ${WT_PEER_OFFLINE_INTERVAL} seconds"
+                debug "peer_offline_usecase loop $(short "${peer_id}") interval ${WT_PEER_OFFLINE_INTERVAL} seconds"
                 sleep "${WT_PEER_OFFLINE_INTERVAL}"
             done
             debug "peer_offline_usecase end $(short "${peer_id}")"
