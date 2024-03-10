@@ -1197,7 +1197,7 @@ function on_handshake_timeout_punch_usecase() {
     esac
 }
 
-# on peer offline usecase
+# peer offline usecase
 
 function peer_offline_usecase() {
     action="${1}" && shift
