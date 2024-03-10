@@ -319,6 +319,20 @@ function wg_interface() {
                         echo "${address}"
                     }
                     ;;
+                peer_status)
+                    peer="${1}" && shift
+                    address="$(interface get peer_address "${peer}")"
+
+                    if ping "${address}" | raw_trace
+                    then
+                        result="online"
+                    else
+                        result="offline"
+                    fi
+
+                    info "wg_interface get peer_status $(short "${peer}") ${result}"
+                    echo "${result}"
+                    ;;
                 latest_handshake)
                     peer="${1:-}" && shift
 
@@ -346,20 +360,6 @@ function wg_interface() {
                     fi
 
                     info "wg_interface get handshake_timeout $(short "${peer:-latest}") ${result}"
-                    echo "${result}"
-                    ;;
-                peer_online)
-                    peer="${1}" && shift
-                    address="$(interface get peer_address "${peer}")"
-
-                    if ping "${address}" | raw_trace
-                    then
-                        result="true"
-                    else
-                        result="false"
-                    fi
-
-                    info "wg_interface get peer_online $(short "${peer}") ${result}"
                     echo "${result}"
                     ;;
             esac
@@ -606,11 +606,13 @@ function ntfy_pubsub() {
             ;;
         poll)
             topic="${1}" && shift
-            debug "ntfy_pubsub poll $(short "${topic}")"
+            since="${1}" && shift
+
+            debug "ntfy_pubsub poll $(short "${topic}") ${since}"
 
             {
                 curl ${NTFY_CURL_OPTIONS} --stderr - \
-                    "${NTFY_URL}/${topic}/raw?poll=1&since=all" \
+                    "${NTFY_URL}/${topic}/raw?poll=1&since=${since}" \
                     || echo ""
             } | tail -n 1 | {
                 while read poll_response
@@ -1001,11 +1003,12 @@ function wirething() {
             debug "wirething poll_peer_endpoint"
             host_id="${1}" && shift
             peer_id="${1}" && shift
+            since="${1}" && shift
 
             topic="$(topic subscribe "${host_id}" "${peer_id}")"
 
             {
-                pubsub poll "${topic}"
+                pubsub poll "${topic}" "${since}"
             } | {
                 while read encrypted_peer_endpoint
                 do
@@ -1066,9 +1069,10 @@ function wirething() {
             debug "wirething fetch_peer_endpoint"
             host_id="${1}" && shift
             peer_id="${1}" && shift
+            since="${1}" && shift
 
             {
-                wirething poll_peer_endpoint "${host_id}" "${peer_id}"
+                wirething poll_peer_endpoint "${host_id}" "${peer_id}" "${since}"
             } | {
                 wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
             }
@@ -1113,7 +1117,7 @@ function on_interval_punch_usecase() {
             fi
             ;;
         loop)
-            debug "on_interval_punch_usecase start $(short "${host_id}") delay ${WT_ON_INTERVAL_PUNCH_START_DELAY}"
+            debug "on_interval_punch_usecase start $(short "${host_id}") delay ${WT_ON_INTERVAL_PUNCH_START_DELAY} seconds"
             sleep "${WT_ON_INTERVAL_PUNCH_START_DELAY}"
 
             PUNCH_PID="$(cat "${WT_ON_INTERVAL_PUNCH_PID_FILE}")"
@@ -1163,7 +1167,7 @@ function on_handshake_timeout_punch_usecase() {
             fi
             ;;
         loop)
-            debug "on_handshake_timeout_punch_usecase start $(short "${host_id}") delay ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY}"
+            debug "on_handshake_timeout_punch_usecase start $(short "${host_id}") delay ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY} seconds"
             sleep "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY}"
 
             PUNCH_PID="$(cat "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE}")"
@@ -1193,46 +1197,53 @@ function on_handshake_timeout_punch_usecase() {
     esac
 }
 
-# always on peer subscribe usecase
+# on peer offline usecase
 
-function always_on_peer_subscribe_usecase() {
+function peer_offline_usecase() {
     action="${1}" && shift
     case "${action}" in
         deps)
             echo "sleep"
             ;;
         init)
-            info "always_on_peer_subscribe_usecase init"
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED="${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED:-true}"
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY="${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY:-25}" # 25 second
-            WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL="${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL:-5}" # 5 second
+            info "peer_offline_usecase init"
+            WT_PEER_OFFLINE_ENABLED="${WT_PEER_OFFLINE_ENABLED:-true}"
+            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-25}" # 25 seconds
+            WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-10}" # 10 seconds
+            WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-25}" # 25 seconds
             ;;
         start)
-            if [[ "${WT_ALWAYS_ON_PEER_SUBSCRIBE_ENABLED}" == "true" ]]
+            if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
-                info "always_on_peer_subscribe_usecase start $(short "${peer_id}")"
-                always_on_peer_subscribe_usecase loop &
+                info "peer_offline_usecase start $(short "${peer_id}")"
+                peer_offline_usecase loop &
             else
-                info "always_on_peer_subscribe_usecase disabled $(short "${peer_id}")"
+                info "peer_offline_usecase disabled $(short "${peer_id}")"
             fi
             ;;
         loop)
-            debug "always_on_peer_subscribe_usecase start $(short "${peer_id}") delay ${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY}"
-            sleep "${WT_ALWAYS_ON_PEER_SUBSCRIBE_START_DELAY}"
-
-            if [ "$(interface get handshake_timeout "${peer_id}")" == "true" ]
-            then
-                wirething fetch_peer_endpoint "${host_id}" "${peer_id}"
-            fi
+            debug "peer_offline_usecase start $(short "${peer_id}") delay ${WT_PEER_OFFLINE_START_DELAY} seconds"
+            sleep "${WT_PEER_OFFLINE_START_DELAY}"
 
             while true
             do
-                wirething listen_peer_endpoint "${host_id}" "${peer_id}"
+                if [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                then
+                    wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all"
 
-                debug "always_on_peer_subscribe_usecase subscribe starting $(short "${peer_id}") interval ${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL} seconds"
-                sleep "${WT_ALWAYS_ON_PEER_SUBSCRIBE_INTERVAL}"
+                    while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                    do
+                        wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "1m"
+
+                        debug "peer_offline_usecase subscribe $(short "${peer_id}") fetch interval ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                        sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+                    done
+                fi
+
+                debug "peer_offline_usecase subscribe $(short "${peer_id}") interval ${WT_PEER_OFFLINE_INTERVAL} seconds"
+                sleep "${WT_PEER_OFFLINE_INTERVAL}"
             done
-            debug "always_on_peer_subscribe_usecase end $(short "${peer_id}")"
+            debug "peer_offline_usecase end $(short "${peer_id}")"
             ;;
     esac
 }
@@ -1251,7 +1262,7 @@ wt_others_list=(
     wirething
     on_interval_punch_usecase
     on_handshake_timeout_punch_usecase
-    always_on_peer_subscribe_usecase
+    peer_offline_usecase
 )
 
 function wt_get_alias() {
@@ -1370,7 +1381,7 @@ function wirething_main() {
 
             for peer_id in ${peer_id_list}
             do
-                always_on_peer_subscribe_usecase start
+                peer_offline_usecase start
             done
             ;;
         wait)
