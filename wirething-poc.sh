@@ -396,6 +396,7 @@ function wg_quick_generate_config_file() {
 [Interface]
 Address = ${WGQ_HOST_ADDRESS}
 PostUp = wg set %i private-key ${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}
+SaveConfig = false
 
 EOF
 
