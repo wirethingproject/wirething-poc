@@ -85,8 +85,8 @@ function epoch() {
     fi
 }
 
-function pid() {
-    echo "${BASHPID:-${$}}"
+function set_pid() {
+    PID="${BASHPID:-${$}}"
 }
 
 function log_dev() {
@@ -1316,7 +1316,8 @@ function wirething_main() {
         init)
             info "wirething_main init"
 
-            WT_PID="$(pid)"
+            set_pid
+            WT_PID="${PID}"
             WT_CONFIG_PATH="${PWD}"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
