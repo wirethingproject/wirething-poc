@@ -55,15 +55,6 @@ function hash_id() {
     echo "${1}" | openssl sha256 | sed "s,.* ,,"
 }
 
-# auto_su: https://github.com/WireGuard/wireguard-tools/blob/master/src/wg-quick/linux.bash#L84
-auto_su() {
-    self="$(readlink -f "${BASH_SOURCE[0]}")"
-    su_prompt="*${self##*/}* must be run as *root*. Please enter the password for *%u* to continue: "
-
-	[[ ${UID} == 0 ]] \
-        || exec sudo --preserve-env --prompt "${su_prompt}" -- "${BASH}" -- "${self}"
-}
-
 # bash compat
 
 function bash_compat() {
@@ -1403,7 +1394,6 @@ function wirething_main() {
 function main() {
     log_init
     wirething_main init
-    auto_su
     wirething_main up
     wirething_main start
     wirething_main wait
