@@ -3,7 +3,10 @@
 # basic
 
 # set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
-set -euo pipefail
+set -o errexit  # -e Exit immediately if any command returns a non-zero status
+set -o errtrace # -E Make ERR trap work with shell functions
+set -o nounset  # -u Treat unset variables as an error
+set -o pipefail # Return non-zero if any command in a pipeline fails
 
 shopt -s expand_aliases
 
@@ -1318,32 +1321,37 @@ function wirething_main() {
             wt_others_for_each init
             ;;
         signal)
-            signal="${1}" && shift
-            result="${1}" && shift
+            signal="${1:-}" && shift
+            result="${1:-}" && shift
+            lineno="${1:-}" && shift
+            funcname="${1:-}" && shift
 
             info "wirething_main signal ${signal} ${result} ${@}"
 
             case "${signal}" in
+                ERR)
+                    error "signal=ERR lineno=${lineno} funcname=${funcname}"
+                    ;;
                 EXIT)
                     # Set trap to empty to run only once
                     trap "" ${signal}
+                    info "pkill -term -g ${WT_PID}"
+                    pkill -TERM -g "${WT_PID}" || true
                     wirething_main down
-                    exit 0
                     ;;
             esac
+            return 0
+            ;;
+        trap)
+            for signal in EXIT ERR SIGTERM
+            do
+                trap "wirething_main signal \"${signal}\" \"${?:-null}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\"" "${signal}"
+            done
             ;;
         up)
-            debug "wirething_main up"
+            info "wirething_main up"
 
-            for signal in SIGHUP SIGINT SIGQUIT SIGILL SIGTRAP SIGABRT \
-                SIGFPE SIGKILL SIGBUS SIGSEGV SIGSYS SIGPIPE SIGALRM SIGTERM \
-                SIGURG SIGSTOP SIGTSTP SIGCONT SIGTTIN SIGTTOU SIGIO \
-                SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGUSR1 \
-                SIGUSR2 EXIT
-            do
-                trap "wirething_main signal ${signal} ${?:-null}" "${signal}"
-            done
-
+            wirething_main trap
 
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
@@ -1383,7 +1391,7 @@ function wirething_main() {
             ;;
         wait)
             info "wirething_main wait start"
-            wait $(jobs -p)
+            wait $(jobs -p) || true
             info "wirething_main wait end"
             ;;
     esac
