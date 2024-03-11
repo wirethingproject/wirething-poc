@@ -8,7 +8,7 @@
       ];
 
       systemd.services.wirething-poc-<hostname> = {
-        path = with pkgs; [ bash util-linux lsof curl gnupg openssl python3Minimal wireguard-tools ];
+        path = with pkgs; [ bash util-linux lsof curl gnupg openssl python3Minimal iputils procps wireguard-tools ];
         wants=[ "network-online.target" "nss-lookup.target" ];
         after=[ "network-online.target" "nss-lookup.target" ];
         serviceConfig = {

@@ -312,9 +312,9 @@ function wg_interface() {
                     ;;
                 peer_status)
                     peer="${1}" && shift
-                    address="$(interface get peer_address "${peer}")"
+                    address="$(wg_interface get peer_address "${peer}")"
 
-                    if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
+                    if ping "${address}" 2>&${WT_LOG_TRACE} | raw_trace
                     then
                         result="online"
                     else
