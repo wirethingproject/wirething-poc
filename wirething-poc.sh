@@ -3,11 +3,15 @@
 # basic
 
 # set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
+
 set -o errexit  # -e Exit immediately if any command returns a non-zero status
 set -o errtrace # -E Make ERR trap work with shell functions
 set -o nounset  # -u Treat unset variables as an error
 set -o pipefail # Return non-zero if any command in a pipeline fails
-set -o posix    # Enable shopt expand_aliases and inherit_errexit
+
+shopt -s expand_aliases  # Aliases are expanded on non interactive shell
+shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
+shopt -s execfail        # Don't exit if exec cannot execute the file
 
 umask 077
 
@@ -528,8 +532,20 @@ function udphole_punch() {
             ;;
         open)
             debug
-            udp open ${UDPHOLE_HOST} ${UDPHOLE_PORT} \
-                && udp writeline ""
+
+            if ! udp open "${UDPHOLE_HOST}" "${UDPHOLE_PORT}"
+            then
+                info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
+                sleep "${WT_PAUSE_AFTER_ERROR}"
+                return 1
+            fi
+
+            if ! udp writeline ""
+            then
+                info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
+                sleep "${WT_PAUSE_AFTER_ERROR}"
+                return 1
+            fi
             ;;
         get)
             name="${1}" && shift
@@ -980,7 +996,8 @@ function wirething() {
             ;;
         punch_host_endpoint)
             debug
-            punch open && {
+            if punch open
+            then
                 host_port="$(punch get port)"
                 host_endpoint="$(punch get endpoint)"
 
@@ -994,7 +1011,7 @@ function wirething() {
                 else
                     error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
                 fi
-            }
+            fi
             ;;
         broadcast_host_endpoint)
             debug
