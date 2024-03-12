@@ -1351,6 +1351,8 @@ wt_type_list=(
 )
 
 wt_others_list=(
+    base_deps
+    udp
     wirething
     on_interval_punch_usecase
     on_handshake_timeout_punch_usecase
@@ -1379,24 +1381,16 @@ function wirething_main() {
     local action="${1}" && shift
     case "${action}" in
         deps)
-            echo -e "# types\n"
-
-            for wt_type in "${wt_type_list[@]}"
-            do
-                echo -n "${wt_type}: "
-                wt_get_alias "${wt_type}"
-            done
-
             {
                 echo "mkdir rm sed sort uniq wc"
-                base_deps
+
                 wt_type_for_each deps
                 wt_others_for_each deps
             } | sed "s, ,\n,g" | sort | uniq | {
                 while read dep
                 do
-                    echo -e "\n# ${dep}\n"
-                    type -a "${dep}" || true
+                    printf "%-13s" "${dep}"
+                    echo "$(type -P "${dep}" || echo "not found")"
                 done
             }
             ;;
