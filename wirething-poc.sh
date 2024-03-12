@@ -1093,7 +1093,7 @@ function wirething() {
             done
             ;;
         ensure_host_endpoint_is_published)
-            debug
+            info
             host_id="${1}" && shift
             peer_id="${1}" && shift
             since="all"
