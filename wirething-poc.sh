@@ -1340,7 +1340,7 @@ function peer_offline_usecase() {
                         if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}"
                         then
                             next_ensure="$(($(epoch) + "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"))"
-                            debug "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
+                            info "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
                         else
                             break
                         fi
