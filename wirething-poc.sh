@@ -1308,7 +1308,7 @@ function peer_offline_usecase() {
                         then
                             while wirething peer_is_offline "${peer_id}"
                             do
-                                if !wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}"
+                                if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}"
                                 then
                                     break
                                 fi
