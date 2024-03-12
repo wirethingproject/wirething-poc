@@ -255,6 +255,7 @@ function wg_interface() {
             info
             WG_INTERFACE="${WG_INTERFACE:?Variable not set}"
             WG_HANDSHAKE_TIMEOUT="${WG_HANDSHAKE_TIMEOUT:-125}" # 125 seconds
+            info "WG_INTERFACE=${WG_INTERFACE}"
             ;;
         up)
             info
@@ -472,6 +473,8 @@ function wg_quick_interface() {
 
             WGQ_INTERFACE="wth${WT_PID}"
             WGQ_CONFIG_FILE="${WT_EPHEMERAL_PATH}/${WGQ_INTERFACE}.conf"
+
+            info "WGQ_INTERFACE=${WGQ_INTERFACE}"
 
             wg_quick_validate_files
             ;;
@@ -1420,6 +1423,8 @@ function wirething_main() {
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
+
+            info "WT_PID=${WT_PID}"
 
             wt_type_for_each init
             wt_others_for_each init
