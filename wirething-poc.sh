@@ -608,31 +608,24 @@ function ntfy_pubsub() {
             {
                 curl ${NTFY_CURL_OPTIONS} --stderr - \
                     "${NTFY_URL}/${topic}/raw?poll=1&since=${since}" \
-                    || echo ""
+                    || true
             } | tail -n 1 | {
-                while read poll_response
-                do
-                    echo "${poll_response}" | hexdump -C | raw_trace
+                read poll_response || true
+                echo "${poll_response}" | hexdump -C | raw_trace
 
-                    case "${poll_response}" in
-                        "")
-                            ;;
-                        "curl"*"timed out"*)
-                            debug "ntfy_pubsub poll ${poll_response}"
-                            ;;
-                        "curl"*)
-                            error "ntfy_pubsub poll ${poll_response}"
-                            sleep "${NTFY_POLL_PAUSE_AFTER_ERROR}"
-                            ;;
-                        "{"*"error"*)
-                            error "ntfy_pubsub poll ${poll_response}"
-                            sleep "${NTFY_POLL_PAUSE_AFTER_ERROR}"
-                            ;;
-                        *)
-                            info "ntfy_pubsub poll $(short "${topic}") $(short "${poll_response}")"
-                            echo "${poll_response}"
-                    esac
-                done
+                case "${poll_response}" in
+                    "curl"*)
+                        error "ntfy_pubsub poll $(short "${topic}") ${poll_response}"
+                        echo "error"
+                        ;;
+                    "{"*"error"*)
+                        error "ntfy_pubsub poll $(short "${topic}") ${poll_response}"
+                        echo "error"
+                        ;;
+                    *)
+                        debug "ntfy_pubsub poll $(short "${topic}") $(short "${poll_response}")"
+                        echo "${poll_response}"
+                esac
             }
             ;;
         subscribe)
@@ -728,10 +721,16 @@ function gpg_ephemeral_encryption() {
         decrypt)
             id="${1}" && shift
             data="${1}" && shift
-            echo "${data}" \
-                | base64 -d \
-                | gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" \
-                    2>&${WT_LOG_DEBUG}
+
+            {
+                echo "${data}"
+            } | {
+                base64 -d || return 1
+            } | {
+                gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" \
+                    2>&${WT_LOG_DEBUG} || return 1
+            }
+            return 0
             ;;
     esac
 }
@@ -994,28 +993,30 @@ function wirething() {
                 pubsub publish "${topic}" "${encrypted_host_endpoint}"
             fi
             ;;
-        poll_peer_endpoint)
-            debug "wirething poll_peer_endpoint"
+        poll_encrypted_host_endpoint)
+            debug "wirething poll_encrypted_host_endpoint"
             host_id="${1}" && shift
             peer_id="${1}" && shift
             since="${1}" && shift
 
-            topic="$(topic subscribe "${host_id}" "${peer_id}")"
+            {
+                topic publish "${host_id}" "${peer_id}"
+            } | {
+                read topic
+                pubsub poll "${topic}" "${since}"
+            }
+            ;;
+        poll_encrypted_peer_endpoint)
+            debug "wirething poll_encrypted_peer_endpoint"
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+            since="${1}" && shift
 
             {
-                pubsub poll "${topic}" "${since}"
+                topic subscribe "${host_id}" "${peer_id}"
             } | {
-                while read encrypted_peer_endpoint
-                do
-                    new_peer_endpoint="$(encryption decrypt "${host_id}" "${encrypted_peer_endpoint}")"
-
-                    echo "${new_peer_endpoint}" | hexdump -C | raw_trace
-
-                    if [ "${new_peer_endpoint}" != "" ]
-                    then
-                        echo "${new_peer_endpoint}"
-                    fi
-                done
+                read topic
+                pubsub poll "${topic}" "${since}"
             }
             ;;
         subscribe_peer_endpoint)
@@ -1056,9 +1057,34 @@ function wirething() {
                 then
                     interface set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
                     wirething set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
-                    wirething publish_host_endpoint "${host_id}" "${peer_id}"
                 fi
             done
+            ;;
+        ensure_host_endpoint_is_published)
+            debug "wirething ensure_host_endpoint_is_published"
+            host_id="${1}" && shift
+            peer_id="${1}" && shift
+            since="all"
+
+            {
+                wirething poll_encrypted_host_endpoint "${host_id}" "${peer_id}" "${since}"
+            } | {
+                read encrypted_host_endpoint
+
+                case "${encrypted_host_endpoint}" in
+                    "")
+                        wirething publish_host_endpoint "${host_id}" "${peer_id}"
+                        ;;
+                    "error")
+                        info "wirething ensure_host_endpoint_is_published $(short "${peer_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                        sleep "${WT_PAUSE_AFTER_ERROR}"
+                        return 1
+                        ;;
+                    *)
+                esac
+
+                return 0
+            }
             ;;
         fetch_peer_endpoint)
             debug "wirething fetch_peer_endpoint"
@@ -1067,9 +1093,37 @@ function wirething() {
             since="${1}" && shift
 
             {
-                wirething poll_peer_endpoint "${host_id}" "${peer_id}" "${since}"
+                wirething poll_encrypted_peer_endpoint "${host_id}" "${peer_id}" "${since}"
             } | {
-                wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
+                read encrypted_peer_endpoint
+
+                case "${encrypted_peer_endpoint}" in
+                    "")
+                        ;;
+                    "error")
+                        info "wirething fetch_peer_endpoint $(short "${peer_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                        sleep "${WT_PAUSE_AFTER_ERROR}"
+                        return 1
+                        ;;
+                    *)
+                        {
+                            encryption decrypt "${host_id}" "${encrypted_peer_endpoint}" \
+                                || return 1
+                        } | {
+                            read new_peer_endpoint || true
+
+                            echo "${new_peer_endpoint}" | hexdump -C | raw_trace
+
+                            if [ "${new_peer_endpoint}" != "" ]
+                            then
+                                echo "${new_peer_endpoint}"
+                            fi
+                        } | {
+                            wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
+                        }
+                esac
+
+                return 0
             }
             ;;
         listen_peer_endpoint)
@@ -1205,7 +1259,8 @@ function peer_offline_usecase() {
             info "peer_offline_usecase init"
             WT_PEER_OFFLINE_ENABLED="${WT_PEER_OFFLINE_ENABLED:-true}"
             WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-25}" # 25 seconds
-            WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-10}" # 10 seconds
+            WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-1m}" # 1 minute
+            WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-25}" # 25 seconds
             ;;
         start)
@@ -1218,31 +1273,42 @@ function peer_offline_usecase() {
             fi
             ;;
         loop)
-            info "peer_offline_usecase start $(short "${peer_id}") delay ${WT_PEER_OFFLINE_START_DELAY} seconds"
+            info "peer_offline_usecase $(short "${peer_id}") start delay ${WT_PEER_OFFLINE_START_DELAY} seconds"
             sleep "${WT_PEER_OFFLINE_START_DELAY}"
 
             while true
             do
                 if [ "$(interface get peer_status "${peer_id}")" == "offline" ]
                 then
-                    info "peer_offline_usecase peer $(short "${peer_id}") is offline"
+                    info "peer_offline_usecase $(short "${peer_id}") peer is offline"
 
-                    wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all"
+                    if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" "all"
+                    then
+                        if wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all"
+                        then
+                            while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                            do
+                                if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}"
+                                then
+                                    break
+                                fi
 
-                    while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
-                    do
-                        wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "1m"
+                                debug "peer_offline_usecase $(short "${peer_id}") fetch interval ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                                sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+                            done
 
-                        debug "peer_offline_usecase fetch $(short "${peer_id}") interval ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
-                        sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
-                    done
-                    info "peer_offline_usecase peer $(short "${peer_id}") is online"
+                            if [ "$(interface get peer_status "${peer_id}")" == "online" ]
+                            then
+                                info "peer_offline_usecase $(short "${peer_id}") peer is online"
+                            fi
+                        fi
+                    fi
                 fi
 
-                debug "peer_offline_usecase loop $(short "${peer_id}") interval ${WT_PEER_OFFLINE_INTERVAL} seconds"
+                debug "peer_offline_usecase $(short "${peer_id}") loop interval ${WT_PEER_OFFLINE_INTERVAL} seconds"
                 sleep "${WT_PEER_OFFLINE_INTERVAL}"
             done
-            info "peer_offline_usecase end $(short "${peer_id}")"
+            info "peer_offline_usecase $(short "${peer_id}") end"
             ;;
     esac
 }
