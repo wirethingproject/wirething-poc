@@ -1337,23 +1337,23 @@ function peer_offline_usecase() {
 
                     if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" "all"
                     then
-                        if wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all"
-                        then
-                            while wirething peer_is_offline "${peer_id}"
-                            do
-                                if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}"
-                                then
-                                    break
-                                fi
-
-                                debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
-                                sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
-                            done
-
-                            if wirething peer_is_online "${peer_id}"
+                        since="all"
+                        while wirething peer_is_offline "${peer_id}"
+                        do
+                            if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${since}"
                             then
-                                info "peer is online"
+                                break
                             fi
+
+                            debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                            sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+
+                            since="${WT_PEER_OFFLINE_FETCH_SINCE}"
+                        done
+
+                        if wirething peer_is_online "${peer_id}"
+                        then
+                            info "peer is online"
                         fi
                     fi
                 fi
