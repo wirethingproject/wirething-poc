@@ -327,22 +327,22 @@ function wg_interface() {
                     echo "${result}"
                     ;;
                 latest_handshake)
-                    peer="${1:-}" && shift
+                    peer="${1}" && shift
 
                     {
                         wg show "${WG_INTERFACE}" latest-handshakes
                     } | {
-                        grep "${peer}" | cut -f 2 | sort -n | tail -n 1
+                        grep "${peer/latest/}" | cut -f 2 | sort -n | tail -n 1
                     } | {
                         read handshake
-                        debug "wg_interface get latest_handshake $(short "${peer:-latest}") ${handshake}"
+                        debug "wg_interface get latest_handshake $(short "${peer}") ${handshake}"
                         echo "${handshake}"
                     }
                     ;;
                 handshake_timeout)
-                    peer="${1:-}" && shift
+                    peer="${1}" && shift
 
-                    last_handshake="$(interface get latest_handshake "${peer}")"
+                    last_handshake="$(wg_interface get latest_handshake "${peer}")"
                     handshake_timeout="$(($(epoch) - ${last_handshake} - ${WG_HANDSHAKE_TIMEOUT}))"
 
                     if [[ ${handshake_timeout} -gt 0 ]]
@@ -352,7 +352,7 @@ function wg_interface() {
                         result="false"
                     fi
 
-                    debug "wg_interface get handshake_timeout $(short "${peer:-latest}") ${result}"
+                    debug "wg_interface get handshake_timeout $(short "${peer}") ${result}"
                     echo "${result}"
                     ;;
             esac
@@ -1171,7 +1171,7 @@ function on_handshake_timeout_punch_usecase() {
 
             while true
             do
-                if [ "$(interface get handshake_timeout "")" == "true" ]
+                if [ "$(interface get handshake_timeout "latest")" == "true" ]
                 then
                     info "on_handshake_timeout_punch_usecase host $(short "${host_id}") handshake_timeout is true"
                     if wirething punch_host_endpoint
