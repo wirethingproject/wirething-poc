@@ -98,7 +98,7 @@ function log_dev() {
 # bash compat udp
 
 function udp() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "lsof grep sed head"
@@ -204,18 +204,22 @@ function raw_trace() {
 }
 
 function debug() {
-    log "DEBUG" "${@}" >&${WT_LOG_DEBUG} || true
+    local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
+    log "DEBUG" "${prefix}" "${@}" >&${WT_LOG_DEBUG} || true
 }
 
 function info() {
-    log "INFO" "${@}" >&${WT_LOG_INFO} || true
+    local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
+    log " INFO" "${prefix}" "${@}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
-    log "ERROR" "${@}" >&${WT_LOG_ERROR} || true
+    local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
+    log "ERROR" "${prefix}" "${@}" >&${WT_LOG_ERROR} || true
 }
 
 function die() {
+    action="${FUNCNAME[1]:-} ${action:-}"
     error "${@}" && exit 1
 }
 
@@ -226,7 +230,7 @@ function short() {
 # wg interface
 
 function wg_interface() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         protocol)
             echo "udp"
@@ -235,12 +239,12 @@ function wg_interface() {
             echo "wg grep cut sed sort tail ping"
             ;;
         init)
-            info "wg_interface init"
+            info
             WG_INTERFACE="${WG_INTERFACE:?Variable not set}"
             WG_HANDSHAKE_TIMEOUT="${WG_HANDSHAKE_TIMEOUT:-125}" # 125 seconds
             ;;
         up)
-            info "wg_interface up"
+            info
             [ "$(wg_interface status)" == "down" ] \
                 && die "Wireguard interface *${WG_INTERFACE:-}* not found." \
                 || true
@@ -251,14 +255,14 @@ function wg_interface() {
                 host_port)
                     port="${1}" && shift
 
-                    info "wg_interface set host_port ${port}"
+                    info "host_port ${port:-''}"
                     wg set "${WG_INTERFACE}" listen-port "${port}"
                     ;;
                 peer_endpoint)
                     peer="${1}" && shift
                     endpoint="${1}" && shift
 
-                    info "wg_interface set peer_endpoint $(short "${peer}") ${endpoint}"
+                    info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
                     wg set "${WG_INTERFACE}" peer "${peer}" endpoint "${endpoint}"
                     ;;
             esac
@@ -271,7 +275,7 @@ function wg_interface() {
                         wg show "${WG_INTERFACE}" public-key
                     } | {
                         read host_id
-                        info "wg_interface get host_id $(short "${host_id}")"
+                        debug "host_id $(short "${host_id:-''}")"
                         echo "${host_id}"
                     }
                     ;;
@@ -281,7 +285,7 @@ function wg_interface() {
                     } | {
                         while read peer_id
                         do
-                            info "wg_interface get peer_id $(short "${peer_id}")"
+                            debug "peer_id $(short "${peer_id:-''}")"
                             echo "${peer_id}"
                         done
                     }
@@ -295,7 +299,7 @@ function wg_interface() {
                         grep "${peer}" | cut -f 2 | sed "s,(none),,"
                     } | {
                         read endpoint
-                        info "wg_interface get peer_endpoint $(short "${peer}") ${endpoint}"
+                        debug "peer_endpoint $(short "${peer}") ${endpoint:-''}"
                         echo "${endpoint}"
                     }
                     ;;
@@ -308,7 +312,7 @@ function wg_interface() {
                         grep "${peer}" | cut -f 2 | sed "s,/32,,"
                     } | {
                         read address
-                        debug "wg_interface get peer_address $(short "${peer}") ${address}"
+                        debug "peer_address $(short "${peer}") ${address:-''}"
                         echo "${address}"
                     }
                     ;;
@@ -323,7 +327,7 @@ function wg_interface() {
                         result="offline"
                     fi
 
-                    debug "wg_interface get peer_status $(short "${peer}") ${result}"
+                    debug "peer_status $(short "${peer}") ${result:-''}"
                     echo "${result}"
                     ;;
                 latest_handshake)
@@ -335,7 +339,7 @@ function wg_interface() {
                         grep "${peer/latest/}" | cut -f 2 | sort -n | tail -n 1
                     } | {
                         read handshake
-                        debug "wg_interface get latest_handshake $(short "${peer}") ${handshake}"
+                        debug "latest_handshake $(short "${peer}") ${handshake:-''}"
                         echo "${handshake}"
                     }
                     ;;
@@ -352,7 +356,7 @@ function wg_interface() {
                         result="false"
                     fi
 
-                    debug "wg_interface get handshake_timeout $(short "${peer}") ${result}"
+                    debug "handshake_timeout $(short "${peer}") ${result:-''}"
                     echo "${result}"
                     ;;
             esac
@@ -368,7 +372,7 @@ function wg_interface() {
                     status="up"
                 fi
 
-                info "wg_interface status ${status}"
+                info "${status}"
                 echo "${status}"
             }
             ;;
@@ -418,7 +422,7 @@ EOF
 }
 
 function wg_quick_interface() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         protocol)
             echo "udp"
@@ -433,7 +437,7 @@ function wg_quick_interface() {
             esac
             ;;
         init)
-            info "wg_quick_interface init"
+            info
 
             if bash_compat 4 0
             then
@@ -459,7 +463,7 @@ function wg_quick_interface() {
             wg_quick_validate_files
             ;;
         up)
-            info "wg_quick_interface up"
+            info
 
             wg_quick_generate_config_file | grep -v "= $" > "${WGQ_CONFIG_FILE}"
 
@@ -481,14 +485,14 @@ function wg_quick_interface() {
             wg_interface init
             ;;
         down)
-            info "wg_quick_interface down"
+            info
 
             [ "$(wg_interface status)" == "up" ] \
                 && info "wg-quick down ${WGQ_CONFIG_FILE}" \
                 && wg-quick down "${WGQ_CONFIG_FILE}" \
                 || true
 
-            rm -f "${WGQ_CONFIG_FILE}" && info "wg_quick_interface *${WGQ_CONFIG_FILE}* was deleted"
+            rm -f "${WGQ_CONFIG_FILE}" && info "*${WGQ_CONFIG_FILE}* was deleted"
             ;;
         get|set)
             wg_interface ${action} ${@}
@@ -499,7 +503,7 @@ function wg_quick_interface() {
 # udphole punch
 
 function udphole_punch() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         protocol)
             echo "udp"
@@ -508,13 +512,13 @@ function udphole_punch() {
             udp deps
             ;;
         init)
-            info "udphole_punch init"
+            info
             UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
             UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             UDPHOLE_READ_TIMEOUT="${UDPHOLE_READ_TIMEOUT:-10}" # 10 seconds
             ;;
         open)
-            debug "udphole_punch open"
+            debug
             udp open ${UDPHOLE_HOST} ${UDPHOLE_PORT} \
                 && udp writeline ""
             ;;
@@ -528,10 +532,10 @@ function udphole_punch() {
                         read -t "${UDPHOLE_READ_TIMEOUT}" port
                         if [[ ${?} -lt 128 ]]
                         then
-                            info "udphole_punch get port ${port}"
+                            info "port ${port:-''}"
                             echo "${port}"
                         else
-                            error "udphole_punch get port timed out"
+                            error "port timed out"
                             echo ""
                         fi
                     }
@@ -543,10 +547,10 @@ function udphole_punch() {
                         read -t "${UDPHOLE_READ_TIMEOUT}" endpoint
                         if [[ ${?} -lt 128 ]]
                         then
-                            info "udphole_punch get endpoint ${endpoint}"
+                            info "endpoint ${endpoint:-''}"
                             echo "${endpoint}"
                         else
-                            error "udphole_punch get endpoint timed out"
+                            error "endpoint timed out"
                             echo ""
                         fi
                     }
@@ -554,7 +558,7 @@ function udphole_punch() {
             esac
             ;;
         close)
-            debug "udphole_punch close"
+            debug
             udp close
             ;;
     esac
@@ -563,13 +567,13 @@ function udphole_punch() {
 # ntfy pubsub
 
 function ntfy_pubsub() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "curl sleep hexdump"
             ;;
         init)
-            info "ntfy_pubsub init"
+            info
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-25}" # 25 seconds
@@ -579,7 +583,7 @@ function ntfy_pubsub() {
         publish)
             topic="${1}" && shift
             request="${1}" && shift
-            info "ntfy_pubsub publish $(short "${topic}") $(short "${request}")"
+            info "$(short "${topic}") request: $(short "${request}")"
 
             {
                 curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_PUBLISH_TIMEOUT}" --stderr - \
@@ -594,7 +598,7 @@ function ntfy_pubsub() {
                         "{"*"event"*"message"*)
                             ;;
                         *)
-                            error "ntfy_pubsub publish ${publish_response}"
+                            error "$(short "${topic}") response: ${publish_response:-''}"
                     esac
                 done
             }
@@ -602,8 +606,6 @@ function ntfy_pubsub() {
         poll)
             topic="${1}" && shift
             since="${1}" && shift
-
-            debug "ntfy_pubsub poll $(short "${topic}") ${since}"
 
             {
                 curl ${NTFY_CURL_OPTIONS} --stderr - \
@@ -615,22 +617,22 @@ function ntfy_pubsub() {
 
                 case "${poll_response}" in
                     "curl"*)
-                        error "ntfy_pubsub poll $(short "${topic}") response:  ${poll_response}"
+                        error "$(short "${topic}") ${since} response: ${poll_response}"
                         echo "error"
                         ;;
                     "{"*"error"*)
-                        error "ntfy_pubsub poll $(short "${topic}") response: ${poll_response}"
+                        error "$(short "${topic}") ${since} response: ${poll_response}"
                         echo "error"
                         ;;
                     *)
-                        debug "ntfy_pubsub poll $(short "${topic}") response: $(short "${poll_response:-''}")"
+                        debug "$(short "${topic}") ${since} response: $(short "${poll_response:-''}")"
                         echo "${poll_response}"
                 esac
             }
             ;;
         subscribe)
             topic="${1}" && shift
-            debug "ntfy_pubsub subscribe $(short "${topic}")"
+            debug "$(short "${topic}") starting"
 
             {
                 curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
@@ -645,18 +647,18 @@ function ntfy_pubsub() {
                         "")
                             ;;
                         "curl"*"timed out"*)
-                            debug "ntfy_pubsub subscribe ${subscribe_response}"
+                            debug "$(short "${topic}") response: ${subscribe_response}"
                             ;;
                         "curl"*)
-                            error "ntfy_pubsub subscribe ${subscribe_response}"
+                            error "$(short "${topic}") response: ${subscribe_response}"
                             sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
                             ;;
                         "{"*"error"*)
-                            error "ntfy_pubsub subscribe ${subscribe_response}"
+                            error "$(short "${topic}") response: ${subscribe_response}"
                             sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
                             ;;
                         *)
-                            info "ntfy_pubsub subscribe $(short "${topic}") $(short "${subscribe_response}")"
+                            info "$(short "${topic}") response: $(short "${subscribe_response:-''}")"
                             echo "${subscribe_response}"
                     esac
                 done
@@ -668,13 +670,13 @@ function ntfy_pubsub() {
 # gpg ephemeral encryption
 
 function gpg_ephemeral_encryption() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "gpg mkdir grep cut sed gpgconf rm base64"
             ;;
         init)
-            info "gpg_ephemeral_encryption init"
+            info
 
             export GNUPGHOME="${WT_EPHEMERAL_PATH}/gpg"
 
@@ -691,7 +693,7 @@ function gpg_ephemeral_encryption() {
             done
             ;;
         up)
-            info "gpg_ephemeral_encryption up"
+            info
 
             mkdir -p "${GNUPGHOME}"
 
@@ -706,9 +708,9 @@ function gpg_ephemeral_encryption() {
             done
             ;;
         down)
-            info "gpg_ephemeral_encryption down"
+            info
             gpgconf --kill gpg-agent
-            rm -rf "${GNUPGHOME}" && debug "gpg_ephemeral_encryption *${GNUPGHOME}* was deleted"
+            rm -rf "${GNUPGHOME}" && info "*${GNUPGHOME}* was deleted"
             ;;
         encrypt)
             id="${1}" && shift
@@ -793,13 +795,13 @@ function totp_token() {
 }
 
 function totp_topic() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "cat base64 openssl sed python3"
             ;;
         init)
-            info "totp_topic init"
+            info
             TOTP_TOKEN="${TOTP_TOKEN:-cat}"
             TOTP_DIGITS="${TOTP_DIGITS:-6}"
             TOTP_PERIOD="${TOTP_PERIOD:-28800}" # 8 hours
@@ -848,20 +850,20 @@ topic ""        || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(opt
 # wirething
 
 function wirething() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "mkdir touch cat hexdump"
             ;;
         init)
-            info "wirething init"
+            info
             WT_STATE="${WT_CONFIG_PATH}/state"
             WT_HOST_PORT_FILE="${WT_STATE}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
             WT_PEER_ENDPOINT_PATH="${WT_STATE}/peer_endpoint"
             ;;
         up)
-            info "wirething up"
+            info
             punch_protocol="$(punch protocol)"
             interface_protocol="$(interface protocol)"
             [ "${punch_protocol}" != "${interface_protocol}" ] \
@@ -874,8 +876,8 @@ function wirething() {
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
             ;;
         up_host)
-            info "wirething up_host $(short "${host_id}")"
-            host_id="${1}" && shift
+            local host_id="${1}" && shift
+            info
 
             value="${WT_PID}"
             encrypted_value="$(encryption encrypt "${host_id}" "${value}" 2>&${WT_LOG_DEBUG})"
@@ -892,8 +894,8 @@ function wirething() {
             fi
             ;;
         up_peer)
-            info "wirething up_peer $(short "${peer_id}")"
-            peer_id="${1}" && shift
+            local peer_id="${1}" && shift
+            info
 
             value="${WT_PID}"
             encryption encrypt "${peer_id}" "${value}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
@@ -910,18 +912,18 @@ function wirething() {
             case "${name}" in
                 host_port)
                     port="${1}" && shift
-                    info "wirething set host_port ${port}"
+                    info "host_port ${port}"
                     echo "${port}" > "${WT_HOST_PORT_FILE}"
                     ;;
                 host_endpoint)
                     endpoint="${1}" && shift
-                    info "wirething set host_endpoint ${endpoint}"
+                    info "host_endpoint ${endpoint}"
                     echo "${endpoint}" > "${WT_HOST_ENDPOINT_FILE}"
                     ;;
                 peer_endpoint)
                     peer_id="${1}" && shift
                     endpoint="${1}" && shift
-                    info "wirething set peer_endpoint $(short "${peer_id}") ${endpoint}"
+                    info "peer_endpoint $(short "${peer_id}") ${endpoint}"
                     echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")"
                     ;;
             esac
@@ -931,17 +933,18 @@ function wirething() {
             case "${name}" in
                 host_port)
                     port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
-                    info "wirething get host_port ${port}"
+                    info "host_port ${port:-''}"
                     echo "${port}"
                     ;;
                 host_endpoint)
                     endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
-                    info "wirething get host_endpoint ${endpoint}"
+                    info "host_endpoint ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
                 peer_endpoint)
+                    peer_id="${1}" && shift
                     endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" 2>&${WT_LOG_DEBUG} || echo)"
-                    info "wirething get peer_endpoint $(short "${peer_id}") ${endpoint}"
+                    info "peer_endpoint $(short "${peer_id}") ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
             esac
@@ -967,7 +970,7 @@ function wirething() {
             fi
             ;;
         punch_host_endpoint)
-            debug "wirething punch_host_endpoint"
+            debug
             punch open && {
                 host_port="$(punch get port)"
                 host_endpoint="$(punch get endpoint)"
@@ -980,22 +983,22 @@ function wirething() {
                     wirething set host_port "${host_port}"
                     wirething set host_endpoint "${host_endpoint}"
                 else
-                    error "wirething set host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
+                    error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
                 fi
             }
             ;;
         broadcast_host_endpoint)
-            debug "wirething broadcast_host_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id_list="${1}" && shift
 
-            for peer_id in ${peer_id_list}
+            for _peer_id in ${peer_id_list}
             do
-                wirething publish_host_endpoint "${host_id}" "${peer_id}"
+                wirething publish_host_endpoint "${host_id}" "${_peer_id}"
             done
             ;;
         publish_host_endpoint)
-            debug "wirething publish_host_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
@@ -1005,7 +1008,7 @@ function wirething() {
 
             if [ "${host_endpoint}" != "" ]
             then
-                info "wirething publish_host_endpoint $(short "${peer_id}") ${host_endpoint}"
+                info "${host_endpoint}"
 
                 topic="$(topic publish "${host_id}" "${peer_id}")"
                 encrypted_host_endpoint="$(encryption encrypt "${peer_id}" "${host_endpoint}")"
@@ -1014,7 +1017,7 @@ function wirething() {
             fi
             ;;
         poll_encrypted_host_endpoint)
-            debug "wirething poll_encrypted_host_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
             since="${1}" && shift
@@ -1027,7 +1030,7 @@ function wirething() {
             }
             ;;
         poll_encrypted_peer_endpoint)
-            debug "wirething poll_encrypted_peer_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
             since="${1}" && shift
@@ -1040,7 +1043,7 @@ function wirething() {
             }
             ;;
         subscribe_peer_endpoint)
-            debug "wirething subscribe_peer_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
@@ -1063,13 +1066,13 @@ function wirething() {
             }
             ;;
         on_new_peer_endpoint)
-            debug "wirething on_new_peer_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
             while read new_peer_endpoint
             do
-                info "wirething on_new_peer_endpoint $(short "${peer_id}") ${new_peer_endpoint}"
+                info "${new_peer_endpoint}"
 
                 current_peer_endpoint="$(interface get peer_endpoint "${peer_id}")"
 
@@ -1081,7 +1084,7 @@ function wirething() {
             done
             ;;
         ensure_host_endpoint_is_published)
-            debug "wirething ensure_host_endpoint_is_published"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
             since="all"
@@ -1096,7 +1099,7 @@ function wirething() {
                         wirething publish_host_endpoint "${host_id}" "${peer_id}"
                         ;;
                     "error")
-                        info "wirething ensure_host_endpoint_is_published $(short "${peer_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                        info "pause after poll_encrypted_host_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
                         sleep "${WT_PAUSE_AFTER_ERROR}"
                         return 1
                         ;;
@@ -1107,7 +1110,7 @@ function wirething() {
             }
             ;;
         fetch_peer_endpoint)
-            debug "wirething fetch_peer_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
             since="${1}" && shift
@@ -1121,7 +1124,7 @@ function wirething() {
                     "")
                         ;;
                     "error")
-                        info "wirething fetch_peer_endpoint $(short "${peer_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                        info "pause after poll_encrypted_peer_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
                         sleep "${WT_PAUSE_AFTER_ERROR}"
                         return 1
                         ;;
@@ -1147,7 +1150,7 @@ function wirething() {
             }
             ;;
         listen_peer_endpoint)
-            debug "wirething listen_peer_endpoint"
+            debug
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
@@ -1163,30 +1166,31 @@ function wirething() {
 # on interval punch usecase
 
 function on_interval_punch_usecase() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "cat sleep"
             ;;
         init)
-            info "on_interval_punch_usecase init"
+            info
             WT_ON_INTERVAL_PUNCH_ENABLED="${WT_ON_INTERVAL_PUNCH_ENABLED:-false}"
             WT_ON_INTERVAL_PUNCH_START_DELAY="${WT_ON_INTERVAL_PUNCH_START_DELAY:-5}" # 5 seconds
             WT_ON_INTERVAL_PUNCH_INTERVAL="${WT_ON_INTERVAL_PUNCH_INTERVAL:-691200}" # 8 hours
             WT_ON_INTERVAL_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/on_interval_punch_usecase.pid"
             ;;
         start)
+            local host_id="${1}" && shift
             if [[ "${WT_ON_INTERVAL_PUNCH_ENABLED}" == "true" ]]
             then
-                info "on_interval_punch_usecase start $(short "${host_id}")"
+                info "enabled"
                 on_interval_punch_usecase loop &
                 echo "${!}" > "${WT_ON_INTERVAL_PUNCH_PID_FILE}"
             else
-                info "on_interval_punch_usecase disabled $(short "${host_id}")"
+                info "disabled"
             fi
             ;;
         loop)
-            info "on_interval_punch_usecase start $(short "${host_id}") delay ${WT_ON_INTERVAL_PUNCH_START_DELAY} seconds"
+            info "pause before start: ${WT_ON_INTERVAL_PUNCH_START_DELAY} seconds"
             sleep "${WT_ON_INTERVAL_PUNCH_START_DELAY}"
 
             PUNCH_PID="$(cat "${WT_ON_INTERVAL_PUNCH_PID_FILE}")"
@@ -1197,14 +1201,14 @@ function on_interval_punch_usecase() {
                 then
                     wirething broadcast_host_endpoint "${host_id}" "${peer_id_list}" &
 
-                    info "on_interval_punch_usecase starting $(short "${host_id}") interval ${WT_ON_INTERVAL_PUNCH_INTERVAL} seconds"
+                    info "pause: ${WT_ON_INTERVAL_PUNCH_INTERVAL} seconds"
                     sleep "${WT_ON_INTERVAL_PUNCH_INTERVAL}"
                 else
-                    info "on_interval_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                    info "pause after punch_host_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
                     sleep "${WT_PAUSE_AFTER_ERROR}"
                 fi
             done
-            info "on_interval_punch_usecase end $(short "${host_id}")"
+            info "end"
             ;;
     esac
 }
@@ -1212,13 +1216,13 @@ function on_interval_punch_usecase() {
 # on handshake timeout punch usecase
 
 function on_handshake_timeout_punch_usecase() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "cat sleep"
             ;;
         init)
-            info "on_handshake_timeout_punch_usecase init"
+            info
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED:-true}"
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY:-240}" # 4 minutes
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL:-15}" # 15 seconds
@@ -1226,17 +1230,18 @@ function on_handshake_timeout_punch_usecase() {
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/on_handshake_timeout_punch_usecase.pid"
             ;;
         start)
+            local host_id="${1}" && shift
             if [[ "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED}" == "true" ]]
             then
-                info "on_handshake_timeout_punch_usecase start $(short "${host_id}")"
+                info "enabled"
                 on_handshake_timeout_punch_usecase loop &
                 echo "${!}" > "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE}"
             else
-                info "on_handshake_timeout_punch_usecase disabled $(short "${host_id}")"
+                info "disabled"
             fi
             ;;
         loop)
-            info "on_handshake_timeout_punch_usecase start $(short "${host_id}") delay ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY} seconds"
+            info "pause before start: ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY} seconds"
             sleep "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY}"
 
             PUNCH_PID="$(cat "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE}")"
@@ -1247,22 +1252,22 @@ function on_handshake_timeout_punch_usecase() {
             do
                 if [ "$(interface get handshake_timeout "latest")" == "true" ]
                 then
-                    info "on_handshake_timeout_punch_usecase host $(short "${host_id}") handshake_timeout is true"
+                    info "handshake_timeout is true"
                     if wirething punch_host_endpoint
                     then
                         wirething broadcast_host_endpoint "${host_id}" "${peer_id_list}" &
-                        info "on_handshake_timeout_punch_usecase broadcast_host_endpoint $(short "${host_id}") interval ${BROADCAST_INTERVAL} seconds before next broadcast"
+                        info "pause after broadcast_host_endpoint: ${BROADCAST_INTERVAL} seconds"
                         sleep "${BROADCAST_INTERVAL}"
                     else
-                        info "on_handshake_timeout_punch_usecase starting $(short "${host_id}") pause after error ${WT_PAUSE_AFTER_ERROR} seconds"
+                        info "pause after punch_host_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
                         sleep "${WT_PAUSE_AFTER_ERROR}"
                     fi
                 else
-                    debug "on_handshake_timeout_punch_usecase handshake_timeout $(short "${host_id}") interval ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL} seconds"
+                    debug "pause: ${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL} seconds"
                     sleep "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL}"
                 fi
             done
-            info "on_handshake_timeout_punch_usecase end $(short "${host_id}")"
+            info "end"
             ;;
     esac
 }
@@ -1270,13 +1275,13 @@ function on_handshake_timeout_punch_usecase() {
 # peer offline usecase
 
 function peer_offline_usecase() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo "sleep"
             ;;
         init)
-            info "peer_offline_usecase init"
+            info
             WT_PEER_OFFLINE_ENABLED="${WT_PEER_OFFLINE_ENABLED:-true}"
             WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-25}" # 25 seconds
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-1m}" # 1 minute
@@ -1284,23 +1289,25 @@ function peer_offline_usecase() {
             WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-25}" # 25 seconds
             ;;
         start)
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
-                info "peer_offline_usecase start $(short "${peer_id}")"
+                info "enabled"
                 peer_offline_usecase loop &
             else
-                info "peer_offline_usecase disabled $(short "${peer_id}")"
+                info "disabled"
             fi
             ;;
         loop)
-            info "peer_offline_usecase $(short "${peer_id}") start delay ${WT_PEER_OFFLINE_START_DELAY} seconds"
+            info "pause before start: ${WT_PEER_OFFLINE_START_DELAY} seconds"
             sleep "${WT_PEER_OFFLINE_START_DELAY}"
 
             while true
             do
                 if wirething peer_is_offline "${peer_id}"
                 then
-                    info "peer_offline_usecase $(short "${peer_id}") peer is offline"
+                    info "peer is offline"
 
                     if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" "all"
                     then
@@ -1313,22 +1320,22 @@ function peer_offline_usecase() {
                                     break
                                 fi
 
-                                debug "peer_offline_usecase $(short "${peer_id}") fetch interval ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                                debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
                                 sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
                             done
 
                             if wirething peer_is_online "${peer_id}"
                             then
-                                info "peer_offline_usecase $(short "${peer_id}") peer is online"
+                                info "peer is online"
                             fi
                         fi
                     fi
                 fi
 
-                debug "peer_offline_usecase $(short "${peer_id}") loop interval ${WT_PEER_OFFLINE_INTERVAL} seconds"
+                debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
                 sleep "${WT_PEER_OFFLINE_INTERVAL}"
             done
-            info "peer_offline_usecase $(short "${peer_id}") end"
+            info "end"
             ;;
     esac
 }
@@ -1369,7 +1376,7 @@ function wt_others_for_each() {
 }
 
 function wirething_main() {
-    action="${1}" && shift
+    local action="${1}" && shift
     case "${action}" in
         deps)
             echo -e "# types\n"
@@ -1394,7 +1401,7 @@ function wirething_main() {
             }
             ;;
         init)
-            info "wirething_main init"
+            info
 
             set_pid
             WT_PID="${PID}"
@@ -1412,7 +1419,7 @@ function wirething_main() {
             lineno="${1:-}" && shift
             funcname="${1:-}" && shift
 
-            info "wirething_main signal ${signal} ${result} ${@}"
+            info "${signal} ${result} ${@}"
 
             case "${signal}" in
                 ERR)
@@ -1435,7 +1442,7 @@ function wirething_main() {
             done
             ;;
         up)
-            info "wirething_main up"
+            info
 
             wirething_main trap
 
@@ -1444,41 +1451,41 @@ function wirething_main() {
             wt_type_for_each up
             wt_others_for_each up
 
-            host_id="$(interface get host_id)"
-            peer_id_list="$(interface get peers_id_list)"
-            peer_id_count="$(interface get peers_id_list | wc -l)"
+            local _host_id="$(interface get host_id)"
+            local peer_id_list="$(interface get peers_id_list)"
 
-            wirething up_host "${host_id}"
+            wirething up_host "${_host_id}"
 
-            for peer_id in ${peer_id_list}
+            for _peer_id in ${peer_id_list}
             do
-                wirething up_peer "${peer_id}"
+                wirething up_peer "${_peer_id}"
             done
             ;;
         down)
             wt_type_for_each down
             wt_others_for_each down
 
-            info "wirething_main down"
-            rm -rf "${WT_EPHEMERAL_PATH}" && info "wirething_main *${WT_EPHEMERAL_PATH}* was deleted"
+            info
+            rm -rf "${WT_EPHEMERAL_PATH}" && info "*${WT_EPHEMERAL_PATH}* was deleted"
             ;;
         start)
-            info "wirething_main start"
-            host_id="$(interface get host_id)"
-            peer_id_list="$(interface get peers_id_list)"
+            info
+            local _host_id="$(interface get host_id)"
+            local peer_id_list="$(interface get peers_id_list)"
+            local peer_id_count="$(interface get peers_id_list | wc -l)"
 
-            on_interval_punch_usecase start
-            on_handshake_timeout_punch_usecase start
+            on_interval_punch_usecase start "${_host_id}"
+            on_handshake_timeout_punch_usecase start "${_host_id}"
 
-            for peer_id in ${peer_id_list}
+            for _peer_id in ${peer_id_list}
             do
-                peer_offline_usecase start
+                peer_offline_usecase start "${_host_id}" "${_peer_id}"
             done
             ;;
         wait)
-            info "wirething_main wait start"
+            info "start"
             wait $(jobs -p) || true
-            info "wirething_main wait end"
+            info "end"
             ;;
     esac
 }
