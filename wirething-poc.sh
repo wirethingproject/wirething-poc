@@ -1330,6 +1330,11 @@ function peer_offline_usecase() {
 
                 while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
                 do
+                    if [ "${since}" == "all" ]
+                    then
+                        info "starting fetch_peer_endpoint loop"
+                    fi
+
                     if [[ $(epoch) -gt ${next_ensure} ]]
                     then
                         if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}"
