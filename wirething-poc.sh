@@ -7,8 +7,7 @@ set -o errexit  # -e Exit immediately if any command returns a non-zero status
 set -o errtrace # -E Make ERR trap work with shell functions
 set -o nounset  # -u Treat unset variables as an error
 set -o pipefail # Return non-zero if any command in a pipeline fails
-
-shopt -s expand_aliases
+set -o posix    # Enable shopt expand_aliases and inherit_errexit
 
 umask 077
 
