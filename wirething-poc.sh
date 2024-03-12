@@ -615,15 +615,15 @@ function ntfy_pubsub() {
 
                 case "${poll_response}" in
                     "curl"*)
-                        error "ntfy_pubsub poll $(short "${topic}") ${poll_response}"
+                        error "ntfy_pubsub poll $(short "${topic}") response:  ${poll_response}"
                         echo "error"
                         ;;
                     "{"*"error"*)
-                        error "ntfy_pubsub poll $(short "${topic}") ${poll_response}"
+                        error "ntfy_pubsub poll $(short "${topic}") response: ${poll_response}"
                         echo "error"
                         ;;
                     *)
-                        debug "ntfy_pubsub poll $(short "${topic}") $(short "${poll_response}")"
+                        debug "ntfy_pubsub poll $(short "${topic}") response: $(short "${poll_response:-''}")"
                         echo "${poll_response}"
                 esac
             }
@@ -874,7 +874,7 @@ function wirething() {
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
             ;;
         up_host)
-            info "wirething up_host"
+            info "wirething up_host $(short "${host_id}")"
             host_id="${1}" && shift
 
             value="${WT_PID}"
@@ -892,7 +892,7 @@ function wirething() {
             fi
             ;;
         up_peer)
-            info "wirething up_peer"
+            info "wirething up_peer $(short "${peer_id}")"
             peer_id="${1}" && shift
 
             value="${WT_PID}"
