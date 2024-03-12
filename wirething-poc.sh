@@ -198,7 +198,7 @@ function log_init() {
             WT_LOG_INFO="${null}"
             ;;
         *)
-            die "Invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
+            die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
     esac
 }
 
@@ -260,7 +260,7 @@ function wg_interface() {
         up)
             info
             [ "$(wg_interface status)" == "down" ] \
-                && die "Wireguard interface *${WG_INTERFACE:-}* not found." \
+                && die "wireguard interface *${WG_INTERFACE:-}* not found." \
                 || true
             ;;
         set)
@@ -397,13 +397,13 @@ function wg_interface() {
 
 function wg_quick_validate_files() {
     [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ] \
-        && die "File WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*" \
+        && die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*" \
         || true
 
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
         [ ! -f "${peer_pub_file}" ] \
-            && die "File in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*" \
+            && die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*" \
             || true
     done
 }
@@ -457,7 +457,7 @@ function wg_quick_interface() {
             then
                 :
             else
-                die "Bash < 4.0 not supported"
+                die "bash < 4.0 not supported"
             fi
 
             WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
@@ -716,7 +716,7 @@ function gpg_ephemeral_encryption() {
             for gpg_file in ${GPG_FILE_LIST}
             do
                 [ ! -f "${gpg_file}" ] \
-                    && die "File in GPG_FILE_LIST not found *${gpg_file}*" \
+                    && die "file in GPG_FILE_LIST not found *${gpg_file}*" \
                     || true
             done
             ;;
@@ -869,11 +869,11 @@ alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
 alias encryption="${WT_ENCRYPTION_TYPE}_encryption"
 alias topic="${WT_TOPIC_TYPE}_topic"
 
-interface ""    || die "Invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
-punch ""        || die "Invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
-pubsub ""       || die "Invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
-encryption ""   || die "Invalid WT_ENCRYPTION_TYPE *${WT_ENCRYPTION_TYPE}*, options: $(options encryption)"
-topic ""        || die "Invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(options topic)"
+interface ""    || die "invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
+punch ""        || die "invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
+pubsub ""       || die "invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
+encryption ""   || die "invalid WT_ENCRYPTION_TYPE *${WT_ENCRYPTION_TYPE}*, options: $(options encryption)"
+topic ""        || die "invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(options topic)"
 
 # wirething
 
@@ -894,9 +894,11 @@ function wirething() {
             info
             punch_protocol="$(punch protocol)"
             interface_protocol="$(interface protocol)"
-            [ "${punch_protocol}" != "${interface_protocol}" ] \
-                && die "Punch *${WT_PUNCH_TYPE}=${punch_protocol}* and interface *${WT_INTERFACE_TYPE}=${interface_protocol}* protocol differ" \
-                || true
+
+            if [ "${punch_protocol}" != "${interface_protocol}" ]
+            then
+                die "punch *${WT_PUNCH_TYPE}=${punch_protocol}* and interface *${WT_INTERFACE_TYPE}=${interface_protocol}* protocol differ"
+            fi
 
             mkdir -p "${WT_STATE}"
             touch "${WT_HOST_PORT_FILE}"
@@ -912,7 +914,7 @@ function wirething() {
             decrypted_value="$(encryption decrypt "${host_id}" "${encrypted_value}" 2>&${WT_LOG_DEBUG})"
 
             [ "${value}" != "${decrypted_value}" ] \
-                && die "Host ${host_id} could not encrypt and decrypt data" \
+                && die "host ${host_id} could not encrypt and decrypt data" \
                 || true
 
             host_port="$(wirething get host_port)"
@@ -927,7 +929,7 @@ function wirething() {
 
             value="${WT_PID}"
             encryption encrypt "${peer_id}" "${value}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
-                || die "Peer ${peer_id} could not encrypt data"
+                || die "peer ${peer_id} could not encrypt data"
 
             peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
             if [ "${peer_endpoint}" != "" ]
@@ -1051,29 +1053,6 @@ function wirething() {
                 pubsub poll "${topic}" "${since}"
             }
             ;;
-        subscribe_peer_endpoint)
-            debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
-
-            topic="$(topic subscribe "${host_id}" "${peer_id}")"
-
-            {
-                pubsub subscribe "${topic}"
-            } | {
-                while read encrypted_peer_endpoint
-                do
-                    new_peer_endpoint="$(encryption decrypt "${host_id}" "${encrypted_peer_endpoint}")"
-
-                    echo "${new_peer_endpoint}" | hexdump -C | raw_trace
-
-                    if [ "${new_peer_endpoint}" != "" ]
-                    then
-                        echo "${new_peer_endpoint}"
-                    fi
-                done
-            }
-            ;;
         on_new_peer_endpoint)
             debug
             host_id="${1}" && shift
@@ -1156,17 +1135,6 @@ function wirething() {
                 esac
 
                 return 0
-            }
-            ;;
-        listen_peer_endpoint)
-            debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
-
-            {
-                wirething subscribe_peer_endpoint "${host_id}" "${peer_id}"
-            } | {
-                wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
             }
             ;;
     esac
