@@ -205,8 +205,10 @@ function log_init() {
 log_init
 
 function log() {
-    [ "${WT_LOG_TIME}" == "true" ] \
-        && echo -n "$(date -Iseconds) " || true
+    if [ "${WT_LOG_TIME}" == "true" ]
+    then
+        echo -n "$(date -Iseconds) "
+    fi
 
     echo "${@}"
 }
@@ -233,7 +235,8 @@ function error() {
 
 function die() {
     action="${FUNCNAME[1]:-} ${action:-}"
-    error "${@}" && exit 1
+    error "${@}"
+    exit 1
 }
 
 function short() {
@@ -259,9 +262,10 @@ function wg_interface() {
             ;;
         up)
             info
-            [ "$(wg_interface status)" == "down" ] \
-                && die "wireguard interface *${WG_INTERFACE:-}* not found." \
-                || true
+            if [ "$(wg_interface status)" == "down" ]
+            then
+                die "wireguard interface *${WG_INTERFACE:-}* not found."
+            fi
             ;;
         set)
             name="${1}" && shift
@@ -396,15 +400,17 @@ function wg_interface() {
 # wg quick interface
 
 function wg_quick_validate_files() {
-    [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ] \
-        && die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*" \
-        || true
+    if [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ]
+    then
+        die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*"
+    fi
 
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
-        [ ! -f "${peer_pub_file}" ] \
-            && die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*" \
-            || true
+        if [ ! -f "${peer_pub_file}" ]
+        then
+            die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*"
+        fi
     done
 }
 
@@ -503,12 +509,18 @@ function wg_quick_interface() {
         down)
             info
 
-            [ "$(wg_interface status)" == "up" ] \
-                && info "wg-quick down ${WGQ_CONFIG_FILE}" \
-                && wg-quick down "${WGQ_CONFIG_FILE}" \
-                || true
+            if [ "$(wg_interface status)" == "up" ]
+            then
+                info "wg-quick down ${WGQ_CONFIG_FILE}"
+                wg-quick down "${WGQ_CONFIG_FILE}"
+            fi
 
-            rm -f "${WGQ_CONFIG_FILE}" && info "*${WGQ_CONFIG_FILE}* was deleted"
+            if rm -f "${WGQ_CONFIG_FILE}"
+            then
+                info "*${WGQ_CONFIG_FILE}* was deleted"
+            else
+                error "*${WGQ_CONFIG_FILE}* delete error"
+            fi
             ;;
         get|set)
             wg_interface ${action} ${@}
@@ -715,9 +727,10 @@ function gpg_ephemeral_encryption() {
 
             for gpg_file in ${GPG_FILE_LIST}
             do
-                [ ! -f "${gpg_file}" ] \
-                    && die "file in GPG_FILE_LIST not found *${gpg_file}*" \
-                    || true
+                if [ ! -f "${gpg_file}" ]
+                then
+                    die "file in GPG_FILE_LIST not found *${gpg_file}*"
+                fi
             done
             ;;
         up)
@@ -738,7 +751,12 @@ function gpg_ephemeral_encryption() {
         down)
             info
             gpgconf --kill gpg-agent
-            rm -rf "${GNUPGHOME}" && info "*${GNUPGHOME}* was deleted"
+            if rm -rf "${GNUPGHOME}"
+            then
+                info "*${GNUPGHOME}* was deleted"
+            else
+                error "*${GNUPGHOME}* delete error"
+            fi
             ;;
         encrypt)
             id="${1}" && shift
@@ -913,9 +931,10 @@ function wirething() {
             encrypted_value="$(encryption encrypt "${host_id}" "${value}" 2>&${WT_LOG_DEBUG})"
             decrypted_value="$(encryption decrypt "${host_id}" "${encrypted_value}" 2>&${WT_LOG_DEBUG})"
 
-            [ "${value}" != "${decrypted_value}" ] \
-                && die "host ${host_id} could not encrypt and decrypt data" \
-                || true
+            if [ "${value}" != "${decrypted_value}" ]
+            then
+                die "host ${host_id} could not encrypt and decrypt data"
+            fi
 
             host_port="$(wirething get host_port)"
             if [ "${host_port}" != "" ]
@@ -1455,7 +1474,12 @@ function wirething_main() {
             wt_others_for_each down
 
             info
-            rm -rf "${WT_EPHEMERAL_PATH}" && info "*${WT_EPHEMERAL_PATH}* was deleted"
+            if rm -rf "${WT_EPHEMERAL_PATH}"
+            then
+                info "*${WT_EPHEMERAL_PATH}* was deleted"
+            else
+                error "*${WT_EPHEMERAL_PATH}* delete error"
+            fi
             ;;
         start)
             info
