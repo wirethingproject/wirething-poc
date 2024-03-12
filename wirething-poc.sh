@@ -974,26 +974,6 @@ function wirething() {
                     ;;
             esac
             ;;
-        peer_is_online)
-            peer_id="${1}" && shift
-
-            if [ "$(interface get peer_status "${peer_id}")" == "online" ]
-            then
-                return 0
-            else
-                return 1
-            fi
-            ;;
-        peer_is_offline)
-            peer_id="${1}" && shift
-
-            if [ "$(interface get peer_status "${peer_id}")" == "offline" ]
-            then
-                return 0
-            else
-                return 1
-            fi
-            ;;
         punch_host_endpoint)
             debug
             if punch open
@@ -1312,6 +1292,7 @@ function peer_offline_usecase() {
             WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-25}" # 25 seconds
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-1m}" # 1 minute
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
+            WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
             WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-25}" # 25 seconds
             ;;
         start)
@@ -1329,34 +1310,44 @@ function peer_offline_usecase() {
             info "pause before start: ${WT_PEER_OFFLINE_START_DELAY} seconds"
             sleep "${WT_PEER_OFFLINE_START_DELAY}"
 
+            local last_status=""
+
             while true
             do
-                if wirething peer_is_offline "${peer_id}"
+                local status="$(interface get peer_status "${peer_id}")"
+
+                if [ "${status}" != "${last_status}" ]
                 then
-                    info "peer is offline"
+                    info "peer is ${status}"
+                    last_status="${status}"
+                fi
 
-                    if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" "all"
+                local since="all"
+                local next_ensure="0"
+
+                while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                do
+                    if [[ $(epoch) -gt ${next_ensure} ]]
                     then
-                        since="all"
-                        while wirething peer_is_offline "${peer_id}"
-                        do
-                            if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${since}"
-                            then
-                                break
-                            fi
-
-                            debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
-                            sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
-
-                            since="${WT_PEER_OFFLINE_FETCH_SINCE}"
-                        done
-
-                        if wirething peer_is_online "${peer_id}"
+                        if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}"
                         then
-                            info "peer is online"
+                            next_ensure="$(($(epoch) + "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"))"
+                            debug "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
+                        else
+                            break
                         fi
                     fi
-                fi
+
+                    if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${since}"
+                    then
+                        break
+                    fi
+
+                    debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                    sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+
+                    since="${WT_PEER_OFFLINE_FETCH_SINCE}"
+                done
 
                 debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
                 sleep "${WT_PEER_OFFLINE_INTERVAL}"
