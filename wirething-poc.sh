@@ -946,6 +946,26 @@ function wirething() {
                     ;;
             esac
             ;;
+        peer_is_online)
+            peer_id="${1}" && shift
+
+            if [ "$(interface get peer_status "${peer_id}")" == "online" ]
+            then
+                return 0
+            else
+                return 1
+            fi
+            ;;
+        peer_is_offline)
+            peer_id="${1}" && shift
+
+            if [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+            then
+                return 0
+            else
+                return 1
+            fi
+            ;;
         punch_host_endpoint)
             debug "wirething punch_host_endpoint"
             punch open && {
@@ -1278,7 +1298,7 @@ function peer_offline_usecase() {
 
             while true
             do
-                if [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                if wirething peer_is_offline "${peer_id}"
                 then
                     info "peer_offline_usecase $(short "${peer_id}") peer is offline"
 
@@ -1286,9 +1306,9 @@ function peer_offline_usecase() {
                     then
                         if wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all"
                         then
-                            while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                            while wirething peer_is_offline "${peer_id}"
                             do
-                                if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}"
+                                if !wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}"
                                 then
                                     break
                                 fi
@@ -1297,7 +1317,7 @@ function peer_offline_usecase() {
                                 sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
                             done
 
-                            if [ "$(interface get peer_status "${peer_id}")" == "online" ]
+                            if wirething peer_is_online "${peer_id}"
                             then
                                 info "peer_offline_usecase $(short "${peer_id}") peer is online"
                             fi
