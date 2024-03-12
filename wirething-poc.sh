@@ -15,35 +15,42 @@ export LC_ALL=C
 
 # utils
 
-function base_deps() {
-    echo "bash tr readlink sudo base64 grep sed cat openssl ping"
+function utils() {
+    local action="${1}" && shift
+    case "${action}" in
+        deps)
+            echo "bash tr readlink sudo base64 grep sed cat openssl ping"
 
-    case "${OSTYPE}" in
-        darwin*)
+            case "${OSTYPE}" in
+                darwin*)
+                    ;;
+                linux*)
+                    ;;
+                *)
+                    die "OS *${OSTYPE}* not supported"
+            esac
+            if bash_compat 5 0
+            then
+                echo "date"
+            fi
             ;;
-        linux*)
+        init)
+            case "${OSTYPE}" in
+                darwin*)
+                    alias ping="ping -c 1 -t 1"
+                    ;;
+                linux*)
+                    alias ping="ping -c 1 -W 1"
+                    alias base64='base64 -w 0'
+                    ;;
+                *)
+                    die "OS *${OSTYPE}* not supported"
+            esac
             ;;
-        *)
-            die "OS *${OSTYPE}* not supported"
     esac
-    if bash_compat 5 0
-    then
-        echo "date"
-    fi
 }
 
-
-case "${OSTYPE}" in
-    darwin*)
-        alias ping="ping -c 1 -t 1"
-        ;;
-    linux*)
-        alias ping="ping -c 1 -W 1"
-        alias base64='base64 -w 0'
-        ;;
-    *)
-        die "OS *${OSTYPE}* not supported"
-esac
+utils init
 
 function to_upper() {
     echo ${1} | tr "[:lower:]" "[:upper:]"
@@ -190,6 +197,8 @@ function log_init() {
             die "Invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
     esac
 }
+
+log_init
 
 function log() {
     [ "${WT_LOG_TIME}" == "true" ] \
@@ -1351,7 +1360,7 @@ wt_type_list=(
 )
 
 wt_others_list=(
-    base_deps
+    utils
     udp
     wirething
     on_interval_punch_usecase
@@ -1487,7 +1496,6 @@ function wirething_main() {
 # main
 
 function main() {
-    log_init
     wirething_main init
     wirething_main up
     wirething_main start
