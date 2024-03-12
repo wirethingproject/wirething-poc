@@ -1483,7 +1483,7 @@ function wirething_main() {
             done
             ;;
         wait)
-            info "start"
+            info
             wait $(jobs -p) || true
             info "end"
             ;;
