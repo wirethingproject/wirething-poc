@@ -185,7 +185,7 @@ function log_init() {
     case "${WT_LOG_LEVEL}" in
         trace)
             set -x
-            export PS4='+ :${LINENO} ${FUNCNAME[0]}(): '
+            export PS4='+ :${LINENO:-} ${FUNCNAME[0]:-}(): '
             WT_LOG_TRACE="${err}"
             WT_LOG_DEBUG="${err}"
             ;;
@@ -223,7 +223,7 @@ function debug() {
 
 function info() {
     local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
-    log " INFO" "${prefix}" "${@}" >&${WT_LOG_INFO} || true
+    log "INFO " "${prefix}" "${@}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
