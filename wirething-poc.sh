@@ -930,17 +930,17 @@ function wirething() {
             name="${1}" && shift
             case "${name}" in
                 host_port)
-                    port="$(cat "${WT_HOST_PORT_FILE}" || echo)"
+                    port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
                     info "wirething get host_port ${port}"
                     echo "${port}"
                     ;;
                 host_endpoint)
-                    endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" || echo)"
+                    endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
                     info "wirething get host_endpoint ${endpoint}"
                     echo "${endpoint}"
                     ;;
                 peer_endpoint)
-                    endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" || echo)"
+                    endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" 2>&${WT_LOG_DEBUG} || echo)"
                     info "wirething get peer_endpoint $(short "${peer_id}") ${endpoint}"
                     echo "${endpoint}"
                     ;;
