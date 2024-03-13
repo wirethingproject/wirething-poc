@@ -1383,7 +1383,7 @@ function peer_offline_usecase() {
                 local since="all"
                 local next_ensure="0"
 
-                while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+                while [ "${status}" == "offline" ]
                 do
                     if [ "${since}" == "all" ]
                     then
@@ -1410,6 +1410,7 @@ function peer_offline_usecase() {
                     sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
 
                     since="${WT_PEER_OFFLINE_FETCH_SINCE}"
+                    status="$(interface get peer_status "${peer_id}")"
                 done
 
                 debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
