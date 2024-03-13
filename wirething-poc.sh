@@ -106,6 +106,35 @@ function log_dev() {
     fi
 }
 
+
+function fd() {
+    local action="${1}" && shift
+    case "${action}" in
+        open)
+            if bash_compat 4 0
+            then
+                coproc cat
+                fd="${COPROC[1]}"
+            else
+                fd="${WT_LOG_DEBUG}"
+            fi
+            ;;
+        close)
+            name="${1}" && shift
+
+            if bash_compat 4 0
+            then
+                local fd_buffer
+                exec {fd}>&-
+                readarray fd_buffer <&${COPROC[0]}
+                declare -g "${name}"="$(IFS=''; echo "${fd_buffer[*]}")"
+            else
+                declare -g "${name}"=""
+            fi
+            ;;
+    esac
+}
+
 # bash compat udp
 
 function udp() {
@@ -129,10 +158,8 @@ function udp() {
         close)
             if bash_compat 4 1
             then
-                exec {UDP_SOCKET}<&- || true
                 exec {UDP_SOCKET}>&- || true
             else
-                exec 100<&- || true
                 exec 100>&- || true
             fi
 
@@ -759,26 +786,47 @@ function gpg_ephemeral_encryption() {
             fi
             ;;
         encrypt)
-            id="${1}" && shift
+            debug
             data="${1}" && shift
-            echo "${data}" \
-                | gpg --encrypt ${GPG_OPTIONS} --hidden-recipient "${id}@${GPG_DOMAIN_NAME}" \
-                    --sign --armor 2>&${WT_LOG_DEBUG} \
-                | base64
-            ;;
-        decrypt)
-            id="${1}" && shift
-            data="${1}" && shift
+            id_list="${@}" && shift
+
+            printf -v recipient " --hidden-recipient %s@${GPG_DOMAIN_NAME}" ${id_list}
 
             {
                 echo "${data}"
             } | {
-                base64 -d || return 1
+                gpg --encrypt ${GPG_OPTIONS} ${recipient} --sign --armor \
+                        2>&${WT_LOG_DEBUG}
             } | {
-                gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" \
-                    2>&${WT_LOG_DEBUG} || return 1
+                base64
             }
-            return 0
+            ;;
+        decrypt)
+            debug
+            data="${1}" && shift
+            id="${1}" && shift
+
+            {
+                echo "${data}"
+            } | {
+                base64 -d
+            } | {
+                fd open
+
+                gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" \
+                    2>&${fd}
+
+                fd close output
+
+                echo "${output}" >&${WT_LOG_DEBUG}
+
+                if grep -iq "error" <<<"${output}"
+                then
+                    return 1
+                else
+                    return 0
+                fi
+            }
             ;;
     esac
 }
@@ -928,13 +976,23 @@ function wirething() {
             info
 
             value="${WT_PID}"
-            encrypted_value="$(encryption encrypt "${host_id}" "${value}" 2>&${WT_LOG_DEBUG})"
-            decrypted_value="$(encryption decrypt "${host_id}" "${encrypted_value}" 2>&${WT_LOG_DEBUG})"
 
-            if [ "${value}" != "${decrypted_value}" ]
-            then
-                die "host ${host_id} could not encrypt and decrypt data"
-            fi
+            {
+                encryption encrypt "${value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
+                    || die "host ${host_id} could not encrypt data"
+            } | {
+                read encrypted_value
+
+                encryption decrypt "${encrypted_value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
+                    || die "host ${host_id} could not decrypt data"
+            } | {
+                read decrypted_value
+
+                if [ "${value}" != "${decrypted_value}" ]
+                then
+                    die "host ${host_id} could not encrypt and decrypt data"
+                fi
+            }
 
             host_port="$(wirething get host_port)"
             if [ "${host_port}" != "" ]
@@ -947,7 +1005,7 @@ function wirething() {
             info
 
             value="${WT_PID}"
-            encryption encrypt "${peer_id}" "${value}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
+            encryption encrypt "${value}" "${peer_id}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
                 || die "peer ${peer_id} could not encrypt data"
 
             peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
@@ -1032,19 +1090,29 @@ function wirething() {
             host_id="${1}" && shift
             peer_id="${1}" && shift
 
-            host_endpoint="$(wirething get host_endpoint)"
+            {
+                wirething get host_endpoint
+            } | {
+                read host_endpoint
+                echo "${host_endpoint}" | hexdump -C | raw_trace
 
-            echo "${host_endpoint}" | hexdump -C | raw_trace
+                if [ "${host_endpoint}" != "" ]
+                then
+                    info "${host_endpoint}"
 
-            if [ "${host_endpoint}" != "" ]
-            then
-                info "${host_endpoint}"
-
-                topic="$(topic publish "${host_id}" "${peer_id}")"
-                encrypted_host_endpoint="$(encryption encrypt "${peer_id}" "${host_endpoint}")"
-
-                pubsub publish "${topic}" "${encrypted_host_endpoint}"
-            fi
+                    {
+                        topic publish "${host_id}" "${peer_id}"
+                    } | {
+                        read topic
+                        {
+                            encryption encrypt "${host_endpoint}" "${peer_id}"
+                        } | {
+                            read encrypted_host_endpoint || true
+                            pubsub publish "${topic}" "${encrypted_host_endpoint}"
+                        }
+                    }
+                fi
+            }
             ;;
         poll_encrypted_host_endpoint)
             debug
@@ -1137,8 +1205,7 @@ function wirething() {
                         ;;
                     *)
                         {
-                            encryption decrypt "${host_id}" "${encrypted_peer_endpoint}" \
-                                || return 1
+                            encryption decrypt "${encrypted_peer_endpoint}" "${host_id}"
                         } | {
                             read new_peer_endpoint || true
 
@@ -1152,8 +1219,6 @@ function wirething() {
                             wirething on_new_peer_endpoint "${host_id}" "${peer_id}"
                         }
                 esac
-
-                return 0
             }
             ;;
     esac
