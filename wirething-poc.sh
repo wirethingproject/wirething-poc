@@ -822,6 +822,7 @@ function gpg_ephemeral_encryption() {
 
                 if grep -iq "error" <<<"${output}"
                 then
+                    echo "${output}" >&${WT_LOG_ERROR}
                     return 1
                 else
                     return 0
@@ -979,18 +980,20 @@ function wirething() {
 
             {
                 encryption encrypt "${value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
-                    || die "host ${host_id} could not encrypt data"
+                    || die "host could not encrypt data"
             } | {
-                read encrypted_value
+                read encrypted_value || true
 
                 encryption decrypt "${encrypted_value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
-                    || die "host ${host_id} could not decrypt data"
+                    || die "host could not decrypt data"
             } | {
-                read decrypted_value
+                read decrypted_value || true
 
                 if [ "${value}" != "${decrypted_value}" ]
                 then
-                    die "host ${host_id} could not encrypt and decrypt data"
+                    die "host could not encrypt and decrypt data"
+                else
+                    info "host could encrypt and decrypt data"
                 fi
             }
 
