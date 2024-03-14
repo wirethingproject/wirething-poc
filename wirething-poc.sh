@@ -827,14 +827,14 @@ function gpg_ephemeral_encryption() {
 
                 fd close output
 
-                echo "${output}" >&${WT_LOG_DEBUG}
 
-                if grep -iq "error" <<<"${output}"
+                if grep -iq "Good signature" <<<"${output}"
                 then
+                    echo "${output}" >&${WT_LOG_DEBUG}
+                    return 0
+                else
                     echo "${output}" >&${WT_LOG_ERROR}
                     return 1
-                else
-                    return 0
                 fi
             }
             ;;
@@ -1014,11 +1014,29 @@ function wirething() {
             ;;
         up_peer)
             local peer_id="${1}" && shift
+            local host_id="${1}" && shift
             info
 
             value="${WT_PID}"
-            encryption encrypt "${value}" "${peer_id}" 1>&${WT_LOG_TRACE} 2>&${WT_LOG_DEBUG} \
-                || die "peer ${peer_id} could not encrypt data"
+
+            {
+                encryption encrypt "${value}" "${host_id} ${peer_id}" 2>&${WT_LOG_DEBUG} \
+                    || die "peer could not encrypt data"
+            } | {
+                read encrypted_value
+
+                encryption decrypt "${encrypted_value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
+                    || die "host could not decrypt peer data"
+            } | {
+                read decrypted_value
+
+                if [ "${value}" != "${decrypted_value}" ]
+                then
+                    die "host could not encrypt and decrypt peer data"
+                else
+                    info "host could encrypt and decrypt peer data"
+                fi
+            }
 
             peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
             if [ "${peer_endpoint}" != "" ]
@@ -1117,7 +1135,7 @@ function wirething() {
                     } | {
                         read topic
                         {
-                            encryption encrypt "${host_endpoint}" "${peer_id}"
+                            encryption encrypt "${host_endpoint}" "${host_id} ${peer_id}"
                         } | {
                             read encrypted_host_endpoint
                             pubsub publish "${topic}" "${encrypted_host_endpoint}"
@@ -1182,18 +1200,31 @@ function wirething() {
                 read encrypted_host_endpoint
 
                 case "${encrypted_host_endpoint}" in
-                    "")
-                        wirething publish_host_endpoint "${host_id}" "${peer_id}"
-                        ;;
                     "error")
                         info "pause after poll_encrypted_host_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
                         sleep "${WT_PAUSE_AFTER_ERROR}"
                         return 1
                         ;;
                     *)
-                esac
+                        {
+                            encryption decrypt "${encrypted_host_endpoint}" "${host_id}"
+                        } | {
+                            read published_host_endpoint
 
-                return 0
+                            echo "${published_host_endpoint}" | hexdump -C | raw_trace
+
+                            {
+                                wirething get host_endpoint
+                            } | {
+                                read host_endpoint
+
+                                if [ "${published_host_endpoint}" != "${host_endpoint}" ]
+                                then
+                                    wirething publish_host_endpoint "${host_id}" "${peer_id}"
+                                fi
+                            }
+                        }
+                esac
             }
             ;;
         fetch_peer_endpoint)
@@ -1544,7 +1575,7 @@ function wirething_main() {
 
             for _peer_id in ${peer_id_list}
             do
-                wirething up_peer "${_peer_id}"
+                wirething up_peer "${_peer_id}" "${_host_id}"
             done
             ;;
         down)
