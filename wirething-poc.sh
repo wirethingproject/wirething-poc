@@ -1388,7 +1388,7 @@ function peer_offline_usecase() {
             info
             WT_PEER_OFFLINE_ENABLED="${WT_PEER_OFFLINE_ENABLED:-true}"
             WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-25}" # 25 seconds
-            WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-1m}" # 1 minute
+            WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
             WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-25}" # 25 seconds
@@ -1449,7 +1449,7 @@ function peer_offline_usecase() {
                     debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
                     sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
 
-                    since="${WT_PEER_OFFLINE_FETCH_SINCE}"
+                    since="${WT_PEER_OFFLINE_FETCH_SINCE}s"
                     status="$(interface get peer_status "${peer_id}")"
                 done
 
