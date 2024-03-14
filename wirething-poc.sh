@@ -983,7 +983,7 @@ function wirething() {
             ;;
         up_host)
             local host_id="${1}" && shift
-            info
+            info "$(short "${host_id}")"
 
             value="${WT_PID}"
 
@@ -1006,16 +1006,31 @@ function wirething() {
                 fi
             }
 
-            host_port="$(wirething get host_port)"
-            if [ "${host_port}" != "" ]
-            then
-                interface set host_port "${host_port}"
-            fi
+            {
+                wirething get host_port
+            } | {
+                read host_port
+
+                if [ "${host_port}" != "" ]
+                then
+                    interface set host_port "${host_port}"
+                else
+                    info "host_port is '${host_port:-''}'"
+                fi
+            }
+
+            {
+                wirething get host_endpoint
+            } | {
+                read host_endpoint
+
+                info "host_endpoint is ${host_endpoint:-''}"
+            }
             ;;
         up_peer)
             local peer_id="${1}" && shift
             local host_id="${1}" && shift
-            info
+            info "$(short "${peer_id}")"
 
             value="${WT_PID}"
 
@@ -1038,11 +1053,18 @@ function wirething() {
                 fi
             }
 
-            peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
-            if [ "${peer_endpoint}" != "" ]
-            then
-                interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
-            fi
+            {
+                wirething get peer_endpoint "${peer_id}"
+            } | {
+                read peer_endpoint
+
+                if [ "${peer_endpoint}" != "" ]
+                then
+                    interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
+                else
+                    info "peer_endpoint is ${peer_endpoint:-''}"
+                fi
+            }
             ;;
         set)
             name="${1}" && shift
@@ -1070,18 +1092,18 @@ function wirething() {
             case "${name}" in
                 host_port)
                     port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
-                    info "host_port ${port:-''}"
+                    debug "host_port ${port:-''}"
                     echo "${port}"
                     ;;
                 host_endpoint)
                     endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
-                    info "host_endpoint ${endpoint:-''}"
+                    debug "host_endpoint ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
                 peer_endpoint)
                     peer_id="${1}" && shift
                     endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" 2>&${WT_LOG_DEBUG} || echo)"
-                    info "peer_endpoint $(short "${peer_id}") ${endpoint:-''}"
+                    debug "peer_endpoint $(short "${peer_id}") ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
             esac
@@ -1284,6 +1306,8 @@ function on_interval_punch_usecase() {
             ;;
         start)
             local host_id="${1}" && shift
+            info "$(short "${host_id}")"
+
             if [[ "${WT_ON_INTERVAL_PUNCH_ENABLED}" == "true" ]]
             then
                 info "enabled"
@@ -1335,6 +1359,8 @@ function on_handshake_timeout_punch_usecase() {
             ;;
         start)
             local host_id="${1}" && shift
+            info "$(short "${host_id}")"
+
             if [[ "${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED}" == "true" ]]
             then
                 info "enabled"
@@ -1396,6 +1422,8 @@ function peer_offline_usecase() {
         start)
             local host_id="${1}" && shift
             local peer_id="${1}" && shift
+            info "$(short "${peer_id}")"
+
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
                 info "enabled"
