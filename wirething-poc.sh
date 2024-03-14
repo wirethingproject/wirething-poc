@@ -19,6 +19,15 @@ export LC_ALL=C
 
 # utils
 
+function base64linux() {
+    base64 -w 0 ${1:-}
+
+    if [ "${1:-}" == "" ]
+    then
+        echo
+    fi
+}
+
 function utils() {
     local action="${1}" && shift
     case "${action}" in
@@ -45,7 +54,7 @@ function utils() {
                     ;;
                 linux*)
                     alias ping="ping -c 1 -W 1"
-                    alias base64='base64 -w 0'
+                    alias base64='base64linux'
                     ;;
                 *)
                     die "OS *${OSTYPE}* not supported"
@@ -982,12 +991,12 @@ function wirething() {
                 encryption encrypt "${value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
                     || die "host could not encrypt data"
             } | {
-                read encrypted_value || true
+                read encrypted_value
 
                 encryption decrypt "${encrypted_value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
                     || die "host could not decrypt data"
             } | {
-                read decrypted_value || true
+                read decrypted_value
 
                 if [ "${value}" != "${decrypted_value}" ]
                 then
@@ -1110,7 +1119,7 @@ function wirething() {
                         {
                             encryption encrypt "${host_endpoint}" "${peer_id}"
                         } | {
-                            read encrypted_host_endpoint || true
+                            read encrypted_host_endpoint
                             pubsub publish "${topic}" "${encrypted_host_endpoint}"
                         }
                     }
@@ -1210,7 +1219,7 @@ function wirething() {
                         {
                             encryption decrypt "${encrypted_peer_endpoint}" "${host_id}"
                         } | {
-                            read new_peer_endpoint || true
+                            read new_peer_endpoint
 
                             echo "${new_peer_endpoint}" | hexdump -C | raw_trace
 
