@@ -24,7 +24,7 @@ function base64linux() {
 
     if [ "${1:-}" == "" ]
     then
-        echo
+        echo ""
     fi
 }
 
@@ -1230,7 +1230,12 @@ function wirething() {
                         ;;
                     *)
                         {
-                            encryption decrypt "${encrypted_host_endpoint}" "${host_id}"
+                            if [[ "${encrypted_host_endpoint}" != "" ]]
+                            then
+                                encryption decrypt "${encrypted_host_endpoint}" "${host_id}"
+                            else
+                                echo ""
+                            fi
                         } | {
                             read published_host_endpoint
 
