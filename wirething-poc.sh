@@ -653,6 +653,7 @@ function ntfy_pubsub() {
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-25}" # 25 seconds
+            NTFY_POLL_TIMEOUT="${NTFY_POLL_TIMEOUT:-25}" # 25 seconds
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-720}" # 12 minutes
             NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-${WT_PAUSE_AFTER_ERROR}}" # ${WT_PAUSE_AFTER_ERROR} seconds
             ;;
@@ -684,7 +685,7 @@ function ntfy_pubsub() {
             since="${1}" && shift
 
             {
-                curl ${NTFY_CURL_OPTIONS} --stderr - \
+                curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_POLL_TIMEOUT}" --stderr - \
                     "${NTFY_URL}/${topic}/raw?poll=1&since=${since}" \
                     || true
             } | tail -n 1 | {
