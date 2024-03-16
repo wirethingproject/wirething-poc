@@ -435,7 +435,7 @@ function wg_interface() {
 
 # wg quick interface
 
-function wg_quick_validate_files() {
+function wg_quick_validate_peers() {
     if [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ]
     then
         die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*"
@@ -447,6 +447,15 @@ function wg_quick_validate_files() {
         then
             die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*"
         fi
+
+        local peer_name="${peer_pub_file##*/}" # remove path
+        peer_name="${peer_name%.pub}" # remove extension
+        peer_name="$(to_upper ${peer_name})" # to upper
+
+        local value
+
+        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name}_ALLOWED_IPS"
+        value="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
     done
 }
 
@@ -454,26 +463,57 @@ function wg_quick_generate_config_file() {
     cat <<EOF
 [Interface]
 Address = ${WGQ_HOST_ADDRESS}
-PostUp = wg set %i private-key ${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}
-SaveConfig = false
-
 EOF
+
+    if [ -f "${WT_HOST_PORT_FILE}" ]
+    then
+            cat <<EOF
+ListenPort = $(cat "${WT_HOST_PORT_FILE}")
+EOF
+    fi
+
+    if [ "${WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY}" == "true" ]
+    then
+        cat <<EOF
+PostUp = wg set %i private-key ${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}
+EOF
+    else
+        cat <<EOF
+PrivateKey = $(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}")
+EOF
+    fi
+
+    local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
 
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
-        peer_name="${peer_pub_file##*/}" # remove path
+        local peer_name="${peer_pub_file##*/}" # remove path
         peer_name="${peer_name%.pub}" # remove extension
         peer_name="$(to_upper ${peer_name})" # to upper
 
-        WGQ_PEER_ALLOWED_IPS="WGQ_PEER_${peer_name}_ALLOWED_IPS" # build the variable name
+        local peer_id="$(cat "${peer_pub_file}")"
+
+        if [ "${peer_id}" == "${host_id}" ]
+        then
+            continue
+        fi
+
+        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name}_ALLOWED_IPS"
 
         cat <<EOF
-[Peer]
-PublicKey = $(cat "${peer_pub_file}")
-AllowedIPs = ${!WGQ_PEER_ALLOWED_IPS:-}
-PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
 
+[Peer]
+PublicKey = ${peer_id}
+AllowedIPs = ${!WGQ_PEER_ALLOWED_IPS_VAR_NAME}
+PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
 EOF
+
+        if [ -f "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" ]
+        then
+            cat <<EOF
+Endpoint = $(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")")
+EOF
+        fi
     done
 }
 
@@ -504,10 +544,9 @@ function wg_quick_interface() {
 
             WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
             WGQ_PEER_PUBLIC_KEY_FILE_LIST="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
+            WGQ_HOST_ADDRESS="${WGQ_HOST_ADDRESS:?Variable not set}"
 
-            WGQ_HOST_ADDRESS="${WGQ_HOST_ADDRESS:-100.64.0.$((${RANDOM} % 254 + 1))}"
-
-            WGQ_PEER_ALLOWED_IPS="${WGQ_PEER_ALLOWED_IPS:-${WGQ_HOST_ADDRESS}/32}"
+            WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY="${WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY:-true}"
             WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-25}" # 25 seconds
 
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
@@ -518,7 +557,7 @@ function wg_quick_interface() {
 
             info "WGQ_INTERFACE=${WGQ_INTERFACE}"
 
-            wg_quick_validate_files
+            wg_quick_validate_peers
             ;;
         up)
             info
@@ -528,6 +567,7 @@ function wg_quick_interface() {
             export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
             export LOG_LEVEL="${WGQ_LOG_LEVEL}"
 
+            info "wg-quick up ${WGQ_CONFIG_FILE}"
             wg-quick up "${WGQ_CONFIG_FILE}" 2>&${WT_LOG_DEBUG}
 
             case "${OSTYPE}" in
