@@ -308,14 +308,12 @@ function wg_interface() {
             case "${name}" in
                 host_port)
                     port="${1}" && shift
-
                     info "host_port ${port:-''}"
                     wg set "${WG_INTERFACE}" listen-port "${port}"
                     ;;
                 peer_endpoint)
                     peer="${1}" && shift
                     endpoint="${1}" && shift
-
                     info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
                     wg set "${WG_INTERFACE}" peer "${peer}" endpoint "${endpoint}"
                     ;;
@@ -342,19 +340,6 @@ function wg_interface() {
                             debug "peer_id $(short "${peer_id:-''}")"
                             echo "${peer_id}"
                         done
-                    }
-                    ;;
-                peer_endpoint)
-                    peer="${1}" && shift
-
-                    {
-                        wg show "${WG_INTERFACE}" endpoints
-                    } | {
-                        grep "${peer}" | cut -f 2 | sed "s,(none),,"
-                    } | {
-                        read endpoint
-                        debug "peer_endpoint $(short "${peer}") ${endpoint:-''}"
-                        echo "${endpoint}"
                     }
                     ;;
                 peer_address)
@@ -436,16 +421,16 @@ function wg_interface() {
 # wg quick interface
 
 function wg_quick_validate_peers() {
-    if [ ! -f "${WGQ_HOST_PRIVATE_KEY_FILE}" ]
+    if [ ! -f "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" ]
     then
-        die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WGQ_HOST_PRIVATE_KEY_FILE}*"
+        die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}*"
     fi
 
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
-        if [ ! -f "${peer_pub_file}" ]
+        if [ ! -f "${WT_CONFIG_PATH}/${peer_pub_file}" ]
         then
-            die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${peer_pub_file}*"
+            die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${WT_CONFIG_PATH}/${peer_pub_file}*"
         fi
 
         local peer_name="${peer_pub_file##*/}" # remove path
@@ -491,7 +476,7 @@ EOF
         peer_name="${peer_name%.pub}" # remove extension
         peer_name="$(to_upper ${peer_name})" # to upper
 
-        local peer_id="$(cat "${peer_pub_file}")"
+        local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
 
         if [ "${peer_id}" == "${host_id}" ]
         then
@@ -525,7 +510,7 @@ function wg_quick_interface() {
             ;;
         deps)
             wg_interface deps
-            echo "wg-quick cat grep rm"
+            echo "wg-quick wg cat grep rm"
             case "${OSTYPE}" in
                 darwin*)
                     echo "wireguard-go"
@@ -598,8 +583,47 @@ function wg_quick_interface() {
                 error "*${WGQ_CONFIG_FILE}* delete error"
             fi
             ;;
-        get|set)
-            wg_interface ${action} ${@}
+        set)
+            wg_interface "${action}" ${@}
+            ;;
+        get)
+            name="${1}" && shift
+            case "${name}" in
+                host_id)
+                    {
+                        cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey
+                    } | {
+                        read host_id
+                        debug "host_id $(short "${host_id:-''}")"
+                        echo "${host_id}"
+                    }
+                    ;;
+                peers_id_list)
+                    {
+                        cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey
+                    } | {
+                        read host_id
+
+                        for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+                        do
+                            {
+                                cat "${WT_CONFIG_PATH}/${peer_pub_file}"
+                            } | {
+                                read peer_id
+
+                                if [ "${peer_id}" != "${host_id}" ]
+                                then
+                                    debug "peer_id $(short "${peer_id:-''}")"
+                                    echo "${peer_id}"
+                                fi
+
+                            }
+                        done
+                    }
+                    ;;
+                *)
+                    wg_interface "${action}" "${name}" ${@}
+            esac
             ;;
     esac
 }
@@ -1114,6 +1138,8 @@ function wirething() {
                     port="${1}" && shift
                     info "host_port ${port}"
                     echo "${port}" > "${WT_HOST_PORT_FILE}"
+
+                    interface set host_port "${host_port}"
                     ;;
                 host_endpoint)
                     endpoint="${1}" && shift
@@ -1125,6 +1151,8 @@ function wirething() {
                     endpoint="${1}" && shift
                     info "peer_endpoint $(short "${peer_id}") ${endpoint}"
                     echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")"
+
+                    interface set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
                     ;;
             esac
             ;;
@@ -1160,7 +1188,6 @@ function wirething() {
 
                 if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
                 then
-                    interface set host_port "${host_port}"
                     wirething set host_port "${host_port}"
                     wirething set host_endpoint "${host_endpoint}"
                 else
@@ -1242,11 +1269,10 @@ function wirething() {
             do
                 info "${new_peer_endpoint}"
 
-                current_peer_endpoint="$(interface get peer_endpoint "${peer_id}")"
+                current_peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
 
                 if [[ "${new_peer_endpoint}" != "${current_peer_endpoint}" ]]
                 then
-                    interface set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
                     wirething set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
                 fi
             done
