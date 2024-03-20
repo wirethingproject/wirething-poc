@@ -805,6 +805,11 @@ function wireproxy_interface() {
                     peer="${1}" && shift
 
                     {
+                        if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")" ]
+                        then
+                            echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")"
+                        fi
+
                         cat "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")"
                     } | {
                         read last_keepalive
@@ -827,10 +832,10 @@ function wireproxy_interface() {
                 handshake_timeouted)
                     peer="${1}" && shift
 
-
                     {
-                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/"* | sort -n | tail -n 1
-                    } | {
+                        echo 0
+                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/"* || true
+                    }  | sort -n | tail -n 1 | {
                         read last_keepalive
 
                         keepalive_delta="$(($(epoch) - ${last_keepalive}))"
