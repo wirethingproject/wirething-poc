@@ -658,6 +658,16 @@ EOF
 BindAddress = ${WIREPROXY_HTTP_BIND}
 EOF
     fi
+
+    for port in ${WIREPROXY_EXPOSE_PORT_LIST}
+    do
+        cat <<EOF
+
+[TCPServerTunnel]
+ListenPort = ${port}
+Target = 127.0.0.1:${port}
+EOF
+    done
 }
 
 function wireproxy_interface() {
@@ -681,6 +691,7 @@ function wireproxy_interface() {
             WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
             WIREPROXY_STATUS_TIMEOUT="${WIREPROXY_STATUS_TIMEOUT:-35}" # 35 seconds
             WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
+            WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
 
             wg_quick_interface init
             ;;
