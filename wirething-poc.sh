@@ -668,6 +668,21 @@ ListenPort = ${port}
 Target = 127.0.0.1:${port}
 EOF
     done
+
+    for forward in ${WIREPROXY_FORWARD_PORT_LIST}
+    do
+        {
+            echo "${forward/:/ }"
+        } | {
+            read local_port remote_endpoint
+            cat <<EOF
+
+[TCPClientTunnel]
+BindAddress = 127.0.0.1:${local_port}
+Target = ${remote_endpoint}
+EOF
+        }
+    done
 }
 
 function wireproxy_interface() {
@@ -692,6 +707,7 @@ function wireproxy_interface() {
             WIREPROXY_STATUS_TIMEOUT="${WIREPROXY_STATUS_TIMEOUT:-35}" # 35 seconds
             WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
             WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
+            WIREPROXY_FORWARD_PORT_LIST="${WIREPROXY_FORWARD_PORT_LIST:-}"
 
             wg_quick_interface init
             ;;
