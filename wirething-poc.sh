@@ -92,7 +92,7 @@ function bash_compat() {
 function epoch() {
     if bash_compat 5 0
     then
-        echo -n "${EPOCHSECONDS}"
+        echo "${EPOCHSECONDS}"
     else
         date -u +"%s"
     fi
@@ -122,7 +122,7 @@ function fd() {
         open)
             if bash_compat 4 0
             then
-                coproc cat
+                coproc cat -u
                 fd="${COPROC[1]}"
             else
                 fd="${WT_LOG_DEBUG}"
@@ -331,7 +331,7 @@ function wg_interface() {
                         echo "${host_id}"
                     }
                     ;;
-                peers_id_list)
+                peer_id_list)
                     {
                         wg show "${WG_INTERFACE}" peers
                     } | {
@@ -382,20 +382,20 @@ function wg_interface() {
                         echo "${handshake}"
                     }
                     ;;
-                handshake_timeout)
+                handshake_timeouted)
                     peer="${1}" && shift
 
                     last_handshake="$(wg_interface get latest_handshake "${peer}")"
-                    handshake_timeout="$(($(epoch) - ${last_handshake} - ${WG_HANDSHAKE_TIMEOUT}))"
+                    handshake_delta="$(($(epoch) - ${last_handshake}))"
 
-                    if [[ ${handshake_timeout} -gt 0 ]]
+                    if [[ ${handshake_delta} -lt ${WG_HANDSHAKE_TIMEOUT} ]]
                     then
-                        result="true"
-                    else
                         result="false"
+                    else
+                        result="true"
                     fi
 
-                    debug "handshake_timeout $(short "${peer}") ${result:-''}"
+                    debug "handshake_timeouted $(short "${peer}") ${result:-''}"
                     echo "${result}"
                     ;;
             esac
@@ -426,6 +426,8 @@ function wg_quick_validate_peers() {
         die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}*"
     fi
 
+    local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
+
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
         if [ ! -f "${WT_CONFIG_PATH}/${peer_pub_file}" ]
@@ -433,14 +435,19 @@ function wg_quick_validate_peers() {
             die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${WT_CONFIG_PATH}/${peer_pub_file}*"
         fi
 
+        local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
+
+        if [ "${peer_id}" == "${host_id}" ]
+        then
+            continue
+        fi
+
         local peer_name="${peer_pub_file##*/}" # remove path
         peer_name="${peer_name%.pub}" # remove extension
         peer_name="$(to_upper ${peer_name})" # to upper
 
-        local value
-
         WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name}_ALLOWED_IPS"
-        value="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
+        local value="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
     done
 }
 
@@ -547,7 +554,7 @@ function wg_quick_interface() {
         up)
             info
 
-            wg_quick_generate_config_file | grep -v "= $" > "${WGQ_CONFIG_FILE}"
+            wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
 
             export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
             export LOG_LEVEL="${WGQ_LOG_LEVEL}"
@@ -598,7 +605,7 @@ function wg_quick_interface() {
                         echo "${host_id}"
                     }
                     ;;
-                peers_id_list)
+                peer_id_list)
                     {
                         cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey
                     } | {
@@ -764,6 +771,9 @@ function ntfy_pubsub() {
                     "{"*"error"*)
                         error "$(short "${topic}") ${since} response: ${poll_response}"
                         echo "error"
+                        ;;
+                    "triggered")
+                        echo ""
                         ;;
                     *)
                         debug "$(short "${topic}") ${since} response: $(short "${poll_response:-''}")"
@@ -1228,7 +1238,13 @@ function wirething() {
                             encryption encrypt "${host_endpoint}" "${host_id} ${peer_id}"
                         } | {
                             read encrypted_host_endpoint
-                            pubsub publish "${topic}" "${encrypted_host_endpoint}"
+
+                            if [ "${encrypted_host_endpoint}" != "" ]
+                            then
+                                pubsub publish "${topic}" "${encrypted_host_endpoint}"
+                            else
+                                error "empty encrypted_host_endpoint"
+                            fi
                         }
                     }
                 fi
@@ -1304,6 +1320,8 @@ function wirething() {
                             fi
                         } | {
                             read published_host_endpoint
+
+                            debug "published_host_endpoint ${published_host_endpoint}"
 
                             echo "${published_host_endpoint}" | hexdump -C | raw_trace
 
@@ -1452,7 +1470,7 @@ function on_handshake_timeout_punch_usecase() {
 
             while true
             do
-                if [ "$(interface get handshake_timeout "latest")" == "true" ]
+                if [ "$(interface get handshake_timeouted "latest")" == "true" ]
                 then
                     info "handshake_timeout is true"
                     if wirething punch_host_endpoint
@@ -1516,7 +1534,7 @@ function peer_offline_usecase() {
 
                 if [ "${status}" != "${last_status}" ]
                 then
-                    info "peer is ${status}"
+                    info "peer status: ${status}"
                     last_status="${status}"
                 fi
 
@@ -1527,7 +1545,7 @@ function peer_offline_usecase() {
                 do
                     if [ "${since}" == "all" ]
                     then
-                        info "starting fetch_peer_endpoint loop"
+                        info "fetch_peer_endpoint: started"
                     fi
 
                     if [[ $(epoch) -gt ${next_ensure} ]]
@@ -1552,6 +1570,11 @@ function peer_offline_usecase() {
                     since="${WT_PEER_OFFLINE_FETCH_SINCE}s"
                     status="$(interface get peer_status "${peer_id}")"
                 done
+
+                if [ "${since}" != "all" ]
+                then
+                    info "fetch_peer_endpoint: stopped"
+                fi
 
                 debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
                 sleep "${WT_PEER_OFFLINE_INTERVAL}"
@@ -1621,6 +1644,7 @@ function wirething_main() {
             set_pid
             WT_PID="${PID}"
             WT_CONFIG_PATH="${PWD}"
+            WT_STATE="${WT_CONFIG_PATH}/state"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
@@ -1631,16 +1655,16 @@ function wirething_main() {
             wt_others_for_each init
             ;;
         signal)
-            signal="${1:-}" && shift
-            result="${1:-}" && shift
-            lineno="${1:-}" && shift
-            funcname="${1:-}" && shift
+            info "${@}"
 
-            info "${signal} ${result} ${@}"
+            local signal="${1:-}" && shift
+            local result="${1:-}" && shift
+            local lineno="${1:-}" && shift
+            local funcname="${1:-}" && shift
 
             case "${signal}" in
                 ERR)
-                    error "signal=ERR lineno=${lineno} funcname=${funcname}"
+                    error "signal=${signal} result=${result} lineno=${lineno} funcname=${funcname}"
                     ;;
                 EXIT)
                     # Set trap to empty to run only once
@@ -1663,13 +1687,14 @@ function wirething_main() {
 
             wirething_main trap
 
+            mkdir -p "${WT_STATE}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             wt_type_for_each up
             wt_others_for_each up
 
             local _host_id="$(interface get host_id)"
-            local peer_id_list="$(interface get peers_id_list)"
+            local peer_id_list="$(interface get peer_id_list)"
 
             wirething up_host "${_host_id}"
 
@@ -1693,8 +1718,8 @@ function wirething_main() {
         start)
             info
             local _host_id="$(interface get host_id)"
-            local peer_id_list="$(interface get peers_id_list)"
-            local peer_id_count="$(interface get peers_id_list | wc -l)"
+            local peer_id_list="$(interface get peer_id_list)"
+            local peer_id_count="$(interface get peer_id_list | wc -l)"
 
             on_interval_punch_usecase start "${_host_id}"
             on_handshake_timeout_punch_usecase start "${_host_id}"
