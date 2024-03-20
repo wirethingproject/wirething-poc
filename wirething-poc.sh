@@ -675,6 +675,7 @@ function wireproxy_interface() {
             info
 
             WIREPROXY_LOG_LEVEL="${WIREPROXY_LOG_LEVEL:-}"
+            WIREPROXY_COMAND="${WIREPROXY_COMAND:-wireproxy}"
             WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
             WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
@@ -738,7 +739,7 @@ function wireproxy_interface() {
             local id_list="${1}" && shift
 
             {
-                coproc WIREPROXY_PROC (wireproxy -c <(wireproxy_generate_config_file) 2>&1)
+                coproc WIREPROXY_PROC ("${WIREPROXY_COMAND}" -c <(wireproxy_generate_config_file) 2>&1)
                 echo "${!}" > "${WIREPROXY_PID_FILE}"
                 cat <&${WIREPROXY_PROC[0]} || true
             } | {
