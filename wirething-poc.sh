@@ -1036,7 +1036,6 @@ function wirething() {
             ;;
         init)
             info
-            WT_STATE="${WT_CONFIG_PATH}/state"
             WT_HOST_PORT_FILE="${WT_STATE}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
             WT_PEER_ENDPOINT_PATH="${WT_STATE}/peer_endpoint"
@@ -1060,7 +1059,7 @@ function wirething() {
             local host_id="${1}" && shift
             info "$(short "${host_id}")"
 
-            value="${WT_PID}"
+            local value="${WT_PID}"
 
             {
                 encryption encrypt "${value}" "${host_id}" 2>&${WT_LOG_DEBUG} \
