@@ -751,12 +751,12 @@ function wireproxy_interface() {
                         continue
                     fi
 
-                    peer_regex="$(echo "${line}" | sed "s,.*peer(\(.*\)…\(.*\)).*,\1.*\2=,")"
+                    peer_regex="$(echo "${line}" | sed "s,.*peer(\(.*\)…\(.*\)) - .*,\1.*\2=,")"
                     id="$(echo -e "${id_list}" | grep "${peer_regex}" || true)"
 
                     if [ "${id}" == "" ]
                     then
-                        error "${id} not found: ${line}"
+                        error "regex=${peer_regex:=''} id="${id:=''}" peer not found: ${line}"
                         continue
                     fi
 
