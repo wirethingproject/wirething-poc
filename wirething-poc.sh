@@ -635,6 +635,229 @@ function wg_quick_interface() {
     esac
 }
 
+# wireproxy interface
+
+function wireproxy_generate_config_file() {
+    wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+    WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wg_quick_generate_config_file
+
+    if [ "${WIREPROXY_SOCKS5_BIND}" != "" ]
+    then
+        cat <<EOF
+
+[Socks5]
+BindAddress = ${WIREPROXY_SOCKS5_BIND}
+EOF
+    fi
+
+    if [ "${WIREPROXY_HTTP_BIND}" != "" ]
+    then
+        cat <<EOF
+
+[http]
+BindAddress = ${WIREPROXY_HTTP_BIND}
+EOF
+    fi
+}
+
+function wireproxy_interface() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        protocol)
+            echo "udp"
+            ;;
+        deps)
+            echo "wg cat grep rm"
+            echo "wireproxy"
+            ;;
+        init)
+            info
+
+            WIREPROXY_LOG_LEVEL="${WIREPROXY_LOG_LEVEL:-}"
+            WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
+            WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
+            WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
+            WIREPROXY_STATUS_TIMEOUT="${WIREPROXY_STATUS_TIMEOUT:-35}" # 35 seconds
+            WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
+
+            wg_quick_interface init
+            ;;
+        up)
+            info
+
+            wireproxy_interface start
+            ;;
+        down)
+            info
+            ;;
+        start)
+            info
+
+            {
+                wireproxy_interface get host_id
+                wireproxy_interface get peer_id_list
+            } | {
+                local id_list
+                readarray id_list
+                wireproxy_interface loop "$(IFS=''; echo "${id_list[*]}")" &
+            }
+            ;;
+        stop)
+            info
+            if [ -f "${WIREPROXY_PID_FILE}" ]
+            then
+                {
+                    cat "${WIREPROXY_PID_FILE}"
+                } | {
+                    read pid
+                    info "kill -TERM ${pid}"
+                    kill -TERM "${pid}" || true
+                }
+            else
+                return 1
+            fi
+            ;;
+        restart)
+            local peer_id=""
+            info
+
+            if wireproxy_interface stop
+            then
+                wireproxy_interface start
+            fi
+            ;;
+        log)
+            if [ "${WIREPROXY_LOG_LEVEL}" == "debug" ]
+            then
+                echo "[wireproxy] ${line}" >&${WT_LOG_DEBUG}
+            fi
+            ;;
+        loop)
+            info
+            local id_list="${1}" && shift
+
+            {
+                coproc WIREPROXY_PROC (wireproxy -c <(wireproxy_generate_config_file) 2>&1)
+                echo "${!}" > "${WIREPROXY_PID_FILE}"
+                cat <&${WIREPROXY_PROC[0]} || true
+            } | {
+                while read line
+                do
+                    wireproxy_interface log "${line}"
+
+                    if ! grep "peer(" <<<"${line}" > /dev/null
+                    then
+                        continue
+                    fi
+
+                    peer_regex="$(echo "${line}" | sed "s,.*peer(\(.*\)…\(.*\)).*,\1.*\2=,")"
+                    id="$(echo -e "${id_list}" | grep "${peer_regex}" || true)"
+
+                    if [ "${id}" == "" ]
+                    then
+                        error "${id} not found: ${line}"
+                        continue
+                    fi
+
+                    case "${line}" in
+                        *"Receiving keepalive packet")
+                            epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
+                            debug "keepalive $(short ${id})"
+                            ;;
+                        *"Received handshake response")
+                            epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
+                            debug "handshake $(short ${id})"
+                            ;;
+                    esac
+                done
+            } || true
+            ;;
+        set)
+            name="${1}" && shift
+            case "${name}" in
+                host_port)
+                    port="${1}" && shift
+                    info "host_port ${port:-''}"
+
+                    if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
+                    then
+                        wireproxy_interface restart
+                    fi
+                    ;;
+                peer_endpoint)
+                    peer="${1}" && shift
+                    endpoint="${1}" && shift
+                    info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
+
+                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
+                    then
+                        wireproxy_interface restart
+                    fi
+                    ;;
+            esac
+            ;;
+        get)
+            name="${1}" && shift
+            case "${name}" in
+                peer_status)
+                    peer="${1}" && shift
+
+                    {
+                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")"
+                    } | {
+                        read last_keepalive
+
+                        keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+
+                        debug "last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_STATUS_TIMEOUT}"
+
+                        if [[ ${keepalive_delta} -lt ${WIREPROXY_STATUS_TIMEOUT} ]]
+                        then
+                            result="online"
+                        else
+                            result="offline"
+                        fi
+
+                        debug "peer_status $(short "${peer}") ${result:-''}"
+                        echo "${result}"
+                    }
+                    ;;
+                handshake_timeouted)
+                    peer="${1}" && shift
+
+
+                    {
+                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/"* | sort -n | tail -n 1
+                    } | {
+                        read last_keepalive
+
+                        keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+
+                        debug "last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HANDSHAKE_TIMEOUT}"
+
+                        if [[ ${keepalive_delta} -lt ${WIREPROXY_HANDSHAKE_TIMEOUT} ]]
+                        then
+                            result="false"
+                        else
+                            result="true"
+                        fi
+
+                        debug "handshake_timeout $(short "${peer}") ${result:-''}"
+                        echo "${result}"
+                    }
+                    ;;
+                host_id)
+                    wg_quick_interface "${action}" "${name}" ${@}
+                    ;;
+                peer_id_list)
+                    wg_quick_interface "${action}" "${name}" ${@}
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 # udphole punch
 
 function udphole_punch() {
@@ -1036,9 +1259,11 @@ function wirething() {
             ;;
         init)
             info
+            WT_STATE="${WT_CONFIG_PATH}/state"
             WT_HOST_PORT_FILE="${WT_STATE}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
             WT_PEER_ENDPOINT_PATH="${WT_STATE}/peer_endpoint"
+            WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE}/peer_last_keepalive"
             ;;
         up)
             info
@@ -1054,6 +1279,7 @@ function wirething() {
             touch "${WT_HOST_PORT_FILE}"
             touch "${WT_HOST_ENDPOINT_FILE}"
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
+            mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
             ;;
         up_host)
             local host_id="${1}" && shift
@@ -1643,7 +1869,6 @@ function wirething_main() {
             set_pid
             WT_PID="${PID}"
             WT_CONFIG_PATH="${PWD}"
-            WT_STATE="${WT_CONFIG_PATH}/state"
             WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
@@ -1686,7 +1911,6 @@ function wirething_main() {
 
             wirething_main trap
 
-            mkdir -p "${WT_STATE}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             wt_type_for_each up
