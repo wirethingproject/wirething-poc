@@ -7,10 +7,12 @@ Documentation=https://www.wirething.org
 
 [Service]
 Type=simple
+Restart=on-failure
+RestartSec=30s
 ExecStart=/usr/bin/wirething-poc.sh
-Restart=always
 WorkingDirectory=/etc/wirething/%i
 EnvironmentFile=/etc/wirething/%i/env
+SyslogIdentifier=wirething-poc
 
 [Install]
 WantedBy=multi-user.target
