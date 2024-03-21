@@ -115,35 +115,6 @@ function log_dev() {
     fi
 }
 
-
-function fd() {
-    local action="${1}" && shift
-    case "${action}" in
-        open)
-            if bash_compat 4 0
-            then
-                coproc cat -u
-                fd="${COPROC[1]}"
-            else
-                fd="${WT_LOG_DEBUG}"
-            fi
-            ;;
-        close)
-            name="${1}" && shift
-
-            if bash_compat 4 0
-            then
-                local fd_buffer
-                exec {fd}>&-
-                readarray fd_buffer <&${COPROC[0]}
-                declare -g "${name}"="$(IFS=''; echo "${fd_buffer[*]}")"
-            else
-                declare -g "${name}"=""
-            fi
-            ;;
-    esac
-}
-
 # bash compat udp
 
 function udp() {
@@ -1247,20 +1218,22 @@ function gpg_ephemeral_encryption() {
             } | {
                 base64 -d
             } | {
-                fd open
+                coproc GPG_PROC (cat -u)
 
-                gpg --decrypt ${GPG_OPTIONS} --local-user "${id}@${GPG_DOMAIN_NAME}" \
-                    2>&${fd}
+                gpg --decrypt ${GPG_OPTIONS} \
+                    --local-user "${id}@${GPG_DOMAIN_NAME}" \
+                    2>&${GPG_PROC[1]}
 
-                fd close output
+                exec {GPG_PROC[1]}>&-
 
+                readarray -u "${GPG_PROC[0]}" gpg_buffer
 
-                if grep -iq "Good signature" <<<"${output}"
+                if grep -iq "Good signature" <<<"${gpg_buffer[*]}"
                 then
-                    echo "${output}" >&${WT_LOG_DEBUG}
+                    (IFS=''; echo -en "${gpg_buffer[*]}";) >&${WT_LOG_DEBUG}
                     return 0
                 else
-                    echo "${output}" >&${WT_LOG_ERROR}
+                    (IFS=''; echo -en "${gpg_buffer[*]}";) >&${WT_LOG_ERROR}
                     return 1
                 fi
             }
