@@ -982,15 +982,15 @@ function stun_punch() {
         open)
             debug
 
-            coproc STUN_UDP_PROC (
-                stunclient "${STUN_HOST}" "${STUN_PORT}" \
-                    --protocol "${STUN_PROTOCOL}" --family "${STUN_FAMILY}" \
-                    2>&1
-            )
+            coproc STUN_UDP_PROC (cat -u)
 
-            readarray -u "${STUN_UDP_PROC[0]}" -t stun_buffer
+            stunclient "${STUN_HOST}" "${STUN_PORT}" \
+                --protocol "${STUN_PROTOCOL}" --family "${STUN_FAMILY}" \
+                2>&1 1>&${STUN_UDP_PROC[1]}
 
             exec {STUN_UDP_PROC[1]}>&-
+
+            readarray -u "${STUN_UDP_PROC[0]}" -t stun_buffer
 
             for line in "${stun_buffer[@]}"
             do
