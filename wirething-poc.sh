@@ -433,6 +433,10 @@ EOF
             cat <<EOF
 ListenPort = $(cat "${WT_HOST_PORT_FILE}")
 EOF
+    else
+            cat <<EOF
+ListenPort = 0
+EOF
     fi
 
     if [ "${WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY}" == "true" ]
@@ -664,8 +668,7 @@ function wireproxy_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg cat grep rm"
-            echo "wireproxy"
+            echo "wg cat grep rm touch wireproxy"
             ;;
         init)
             info
@@ -1357,7 +1360,7 @@ function wirething() {
     local action="${1}" && shift
     case "${action}" in
         deps)
-            echo "mkdir touch cat hexdump"
+            echo "mkdir cat hexdump"
             ;;
         init)
             info
@@ -1378,10 +1381,18 @@ function wirething() {
             fi
 
             mkdir -p "${WT_STATE}"
-            touch "${WT_HOST_PORT_FILE}"
-            touch "${WT_HOST_ENDPOINT_FILE}"
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
             mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
+
+            if [ ! -f "${WT_HOST_PORT_FILE}" ]
+            then
+                echo "0" > "${WT_HOST_PORT_FILE}"
+            fi
+
+            if [ ! -f "${WT_HOST_ENDPOINT_FILE}" ]
+            then
+                echo "" > "${WT_HOST_ENDPOINT_FILE}"
+            fi
             ;;
         up_host)
             local host_id="${1}" && shift
@@ -1497,7 +1508,7 @@ function wirething() {
             name="${1}" && shift
             case "${name}" in
                 host_port)
-                    port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
+                    port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG})"
                     debug "host_port ${port:-''}"
                     echo "${port}"
                     ;;
@@ -1778,7 +1789,7 @@ function on_handshake_timeout_punch_usecase() {
         init)
             info
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_ENABLED:-true}"
-            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY:-45}" # 46 seconds
+            WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_START_DELAY:-45}" # 45 seconds
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_INTERVAL:-15}" # 15 seconds
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_MAX_BROADCAST_DAY="${WT_ON_HANDSHAKE_TIMEOUT_PUNCH_MAX_BROADCAST_DAY:-250}"
             WT_ON_HANDSHAKE_TIMEOUT_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/on_handshake_timeout_punch_usecase.pid"
