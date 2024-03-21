@@ -989,6 +989,80 @@ function udphole_punch() {
     esac
 }
 
+# stun punch
+
+function stun_punch() {
+    local action="${1}" && shift
+    case "${action}" in
+        protocol)
+            echo "udp"
+            ;;
+        deps)
+            echo "stunclient"
+            ;;
+        init)
+            info
+            STUN_HOST="${STUN_HOST:-stunserver.stunprotocol.org}" # Stun service hosting the Stuntman
+            STUN_PORT="${STUN_PORT:-3478}"
+
+            STUN_PROTOCOL="udp"
+            STUN_FAMILY="4"
+            ;;
+        open)
+            debug
+
+            coproc STUN_UDP_PROC (
+                stunclient "${STUN_HOST}" "${STUN_PORT}" \
+                    --protocol "${STUN_PROTOCOL}" --family "${STUN_FAMILY}" \
+                    2>&1
+            )
+
+            readarray -u "${STUN_UDP_PROC[0]}" -t stun_buffer
+
+            exec {STUN_UDP_PROC[1]}>&-
+
+            for line in "${stun_buffer[@]}"
+            do
+                debug "[stunclient] ${line}"
+
+                case "${line}" in
+                    "Binding test: success")
+                        ;;
+                    "Local address: "*)
+                        STUN_LOCAL_PORT="${line/*:/}"
+                        ;;
+                    "Mapped address: "*)
+                        STUN_REMOTE_ENDPOINT="${line/*: /}"
+                        ;;
+                    *)
+                        error "${line}"
+                        info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
+                        sleep "${WT_PAUSE_AFTER_ERROR}"
+                        return 1
+                esac
+            done
+            ;;
+        get)
+            name="${1}" && shift
+            case "${name}" in
+                port)
+                    info "port ${STUN_LOCAL_PORT:-''}"
+                    echo "${STUN_LOCAL_PORT}"
+                    ;;
+                endpoint)
+                    info "endpoint ${STUN_REMOTE_ENDPOINT:-''}"
+                    echo "${STUN_REMOTE_ENDPOINT}"
+                    ;;
+            esac
+            ;;
+        close)
+            debug
+            unset STUN_LOCAL_PORT
+            unset STUN_REMOTE_ENDPOINT
+            ;;
+    esac
+}
+
 # ntfy pubsub
 
 function ntfy_pubsub() {
@@ -1287,7 +1361,7 @@ function options() {
 }
 
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg_quick}"
-WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-udphole}"
+WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-stun}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE:-gpg_ephemeral}"
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-totp}"
@@ -1469,20 +1543,29 @@ function wirething() {
             ;;
         punch_host_endpoint)
             debug
+
             if punch open
             then
-                host_port="$(punch get port)"
-                host_endpoint="$(punch get endpoint)"
+                {
+                    punch get port
+                    punch get endpoint
+                } | {
+                    read host_port
+                    read host_endpoint
 
+                    if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                    then
+                        wirething set host_port "${host_port}"
+                        wirething set host_endpoint "${host_endpoint}"
+                    else
+                        error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
+                        punch close
+                        return 1
+                    fi
+                }
                 punch close
-
-                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
-                then
-                    wirething set host_port "${host_port}"
-                    wirething set host_endpoint "${host_endpoint}"
-                else
-                    error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
-                fi
+            else
+                return 1
             fi
             ;;
         broadcast_host_endpoint)
