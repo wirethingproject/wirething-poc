@@ -702,6 +702,7 @@ function wireproxy_interface() {
             WIREPROXY_LOG_LEVEL="${WIREPROXY_LOG_LEVEL:-}"
             WIREPROXY_COMAND="${WIREPROXY_COMAND:-wireproxy}"
             WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
+            WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
             WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
             WIREPROXY_STATUS_TIMEOUT="${WIREPROXY_STATUS_TIMEOUT:-35}" # 35 seconds
@@ -742,33 +743,54 @@ function wireproxy_interface() {
                     info "kill -TERM ${pid}"
                     kill -TERM "${pid}" || true
                 }
-            else
-                return 1
             fi
             ;;
-        restart)
+        reload)
             local peer_id=""
             info
 
-            if wireproxy_interface stop
+            if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
             then
-                wireproxy_interface start
+                touch "${WIREPROXY_RELOAD_FILE}"
+                wireproxy_interface stop
             fi
             ;;
         log)
-            if [ "${WIREPROXY_LOG_LEVEL}" == "debug" ]
-            then
-                echo "[wireproxy] ${line}" >&${WT_LOG_DEBUG}
-            fi
+            case "${line}" in
+                ERROR*)
+                    echo "[wireproxy] ${line}" >&${WT_LOG_ERROR}
+                    ;;
+                DEBUG*)
+                    if [ "${WIREPROXY_LOG_LEVEL}" == "debug" ]
+                    then
+                        echo "[wireproxy] ${line}" >&${WT_LOG_DEBUG}
+                    fi
+                    ;;
+                *)
+                    echo "[wireproxy] ${line}" >&${WT_LOG_INFO}
+            esac
             ;;
         loop)
             info
             local id_list="${1}" && shift
 
             {
-                coproc WIREPROXY_PROC ("${WIREPROXY_COMAND}" -c <(wireproxy_generate_config_file) 2>&1)
-                echo "${!}" > "${WIREPROXY_PID_FILE}"
-                cat <&${WIREPROXY_PROC[0]} || true
+                while true
+                do
+                    coproc WIREPROXY_PROC ("${WIREPROXY_COMAND}" -c <(wireproxy_generate_config_file) 2>&1)
+                    echo "${!}" > "${WIREPROXY_PID_FILE}"
+                    rm -f "${WIREPROXY_RELOAD_FILE}"
+
+                    cat <&${WIREPROXY_PROC[0]} || true
+                    rm -f "${WIREPROXY_PID_FILE}"
+
+                    if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
+                    then
+                        break
+                    fi
+
+                    sleep 1
+                done
             } | {
                 while read line
                 do
@@ -799,7 +821,7 @@ function wireproxy_interface() {
                             ;;
                     esac
                 done
-            } || true
+            }
             ;;
         set)
             name="${1}" && shift
@@ -810,7 +832,7 @@ function wireproxy_interface() {
 
                     if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
                     then
-                        wireproxy_interface restart
+                        wireproxy_interface reload
                     fi
                     ;;
                 peer_endpoint)
@@ -820,7 +842,7 @@ function wireproxy_interface() {
 
                     if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
                     then
-                        wireproxy_interface restart
+                        wireproxy_interface reload
                     fi
                     ;;
             esac
