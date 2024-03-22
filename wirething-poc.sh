@@ -483,9 +483,13 @@ EOF
 
         if [ -f "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" ]
         then
+            endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")")
+            if [ "${endpoint}" != "" ]
+            then
             cat <<EOF
-Endpoint = $(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")")
+Endpoint = ${endpoint}
 EOF
+            fi
         fi
     done
 }
