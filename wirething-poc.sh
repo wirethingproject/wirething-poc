@@ -346,6 +346,26 @@ function wg_interface() {
                     debug "peer_status $(short "${peer}") ${result:-''}"
                     echo "${result}"
                     ;;
+                host_status)
+                    host="${1}" && shift
+
+                    {
+                        wg show "${WG_INTERFACE}" allowed-ips
+                    } | cut -f 2 | sed "s,/32,," | {
+                        result="offline"
+
+                        while read address
+                        do
+                            if ping "${address}" 2>&${WT_LOG_TRACE} | raw_trace
+                            then
+                                result="online"
+                            fi
+
+                            debug "host_status $(short "${host}") ${result:-''}"
+                            echo "${result}"
+                        done
+                    }
+                    ;;
                 latest_handshake)
                     peer="${1}" && shift
 
@@ -683,7 +703,7 @@ function wireproxy_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg cat grep rm touch wireproxy"
+            echo "wg cat cut find grep rm sort tail touch wireproxy"
             ;;
         init)
             info
@@ -854,7 +874,7 @@ function wireproxy_interface() {
 
                         keepalive_delta="$(($(epoch) - ${last_keepalive}))"
 
-                        debug "last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_STATUS_TIMEOUT}"
+                        debug "peer_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_STATUS_TIMEOUT}"
 
                         if [[ ${keepalive_delta} -lt ${WIREPROXY_STATUS_TIMEOUT} ]]
                         then
@@ -863,7 +883,36 @@ function wireproxy_interface() {
                             result="offline"
                         fi
 
-                        debug "peer_status $(short "${peer}") ${result:-''}"
+                        debug "peer_status $(short "${peer}") ${result}"
+                        echo "${result}"
+                    }
+                    ;;
+                host_status)
+                    host="${1}" && shift
+
+                    {
+                        find "${WT_PEER_LAST_KEEPALIVE_PATH}" -type f
+                    } | {
+                        echo "0"
+                        while read peer_keepalive_file
+                        do
+                            cat "${peer_keepalive_file}"
+                        done
+                    } | sort -n | tail -n 1 | {
+                        read last_keepalive
+
+                        keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+
+                        debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_STATUS_TIMEOUT}"
+
+                        if [[ ${keepalive_delta} -lt ${WIREPROXY_STATUS_TIMEOUT} ]]
+                        then
+                            result="online"
+                        else
+                            result="offline"
+                        fi
+
+                        debug "host_status $(short "${host}") ${result}"
                         echo "${result}"
                     }
                     ;;
@@ -915,14 +964,33 @@ function udphole_punch() {
             ;;
         init)
             info
-            UDPHOLE_HOST="${UDPHOLE_HOST:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
+            UDPHOLE_HOSTNAME="${UDPHOLE_HOSTNAME:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
             UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             UDPHOLE_READ_TIMEOUT="${UDPHOLE_READ_TIMEOUT:-10}" # 10 seconds
+            ;;
+        status)
+            local result="offline"
+
+            if udphole_punch open
+            then
+                read host_port < <(udphole_punch get port)
+                read host_endpoint < <(udphole_punch get endpoint)
+
+                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                then
+                    result="online"
+                fi
+
+                udphole_punch close
+            fi
+
+            debug "${result:-''}"
+            echo "${result}"
             ;;
         open)
             debug
 
-            if ! udp open "${UDPHOLE_HOST}" "${UDPHOLE_PORT}"
+            if ! udp open "${UDPHOLE_HOSTNAME}" "${UDPHOLE_PORT}"
             then
                 info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
                 sleep "${WT_PAUSE_AFTER_ERROR}"
@@ -941,7 +1009,7 @@ function udphole_punch() {
             case "${name}" in
                 port)
                     {
-                        udp port ${UDPHOLE_HOST} ${UDPHOLE_PORT} ${PUNCH_PID}
+                        udp port ${UDPHOLE_HOSTNAME} ${UDPHOLE_PORT} ${PUNCH_PID}
                     } | {
                         read -t "${UDPHOLE_READ_TIMEOUT}" port
                         if [[ ${?} -lt 128 ]]
@@ -991,18 +1059,38 @@ function stun_punch() {
             ;;
         init)
             info
-            STUN_HOST="${STUN_HOST:-stunserver.stunprotocol.org}" # Stun service hosting the Stuntman
+            STUN_HOSTNAME="${STUN_HOSTNAME:-stunserver.stunprotocol.org}" # Stun service hosting the Stuntman
             STUN_PORT="${STUN_PORT:-3478}"
 
             STUN_PROTOCOL="udp"
             STUN_FAMILY="4"
             ;;
+        status)
+            local result="offline"
+
+            if stun_punch open
+            then
+                read host_port < <(stun_punch get port)
+                read host_endpoint < <(stun_punch get endpoint)
+
+                debug "*${host_port}*" "*${host_endpoint}*"
+                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                then
+                    result="online"
+                fi
+
+                stun_punch close
+            fi
+
+            debug "${result:-''}"
+            echo "${result}"
+            ;;
         open)
-            debug
+            debug "${STUN_HOSTNAME}" "${STUN_PORT}"
 
             coproc STUN_UDP_PROC (cat -u)
 
-            stunclient "${STUN_HOST}" "${STUN_PORT}" \
+            stunclient "${STUN_HOSTNAME}" "${STUN_PORT}" \
                 --protocol "${STUN_PROTOCOL}" --family "${STUN_FAMILY}" \
                 2>&1 1>&${STUN_UDP_PROC[1]}
 
@@ -1068,6 +1156,17 @@ function ntfy_pubsub() {
             NTFY_POLL_TIMEOUT="${NTFY_POLL_TIMEOUT:-25}" # 25 seconds
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-720}" # 12 minutes
             NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-${WT_PAUSE_AFTER_ERROR}}" # ${WT_PAUSE_AFTER_ERROR} seconds
+            ;;
+        status)
+            if curl -sS --head "${NTFY_URL}" 2>&${WT_LOG_TRACE}
+            then
+                result="online"
+            else
+                result="offline"
+            fi
+
+            debug "${result:-''}"
+            echo "${result}"
             ;;
         publish)
             topic="${1}" && shift
