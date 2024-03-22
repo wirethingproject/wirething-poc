@@ -24,6 +24,7 @@ In the bellow configuration, replace _<domain>_ with the chosen name.
         lsof
         openssl
         python3Minimal
+        stuntman
         wireguard-go
         wireguard-tools
       ];
@@ -40,7 +41,7 @@ In the bellow configuration, replace _<domain>_ with the chosen name.
         };
         "wirething-poc@<domain>" = {
           enable = true;
-          path = with pkgs; [ bash util-linux lsof curl gnupg openssl python3Minimal iputils procps wireguard-go wireguard-tools ];
+          path = with pkgs; [ bash util-linux lsof curl gnupg openssl python3Minimal iputils procps stuntman wireguard-go wireguard-tools ];
           after=[ "network-online.target" "nss-lookup.target" ];
           wants=[ "network-online.target" "nss-lookup.target" ];
           wantedBy = [ "multi-user.target" ];
