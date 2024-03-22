@@ -2207,7 +2207,7 @@ function wirething_main() {
             return 0
             ;;
         trap)
-            for signal in EXIT ERR SIGTERM
+            for signal in EXIT ERR SIGTERM SIGINT
             do
                 trap "wirething_main signal \"${signal}\" \"${?:-null}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\"" "${signal}"
             done
