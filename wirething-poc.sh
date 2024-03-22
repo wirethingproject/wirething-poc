@@ -269,6 +269,12 @@ function wg_interface() {
             ;;
         up)
             info
+
+            if wg show 2>&${WT_LOG_ERROR} | raw_log "wg show" trace
+            then
+                die "wireguard must be run as root: user id $(id -u) != 0"
+            fi
+
             if [ "$(wg_interface status)" == "down" ]
             then
                 die "wireguard interface *${WG_INTERFACE:-}* not found."
@@ -528,6 +534,11 @@ function wg_quick_interface() {
             ;;
         up)
             info
+
+            if wg show 2>&${WT_LOG_ERROR} | raw_log "wg show" trace
+            then
+                die "wg-quick must be run as root: user id $(id -u) != 0"
+            fi
 
             wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
 
