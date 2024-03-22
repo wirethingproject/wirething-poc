@@ -102,6 +102,21 @@ function set_pid() {
     PID="${BASHPID:-${$}}"
 }
 
+function capture() {
+    local action="${1}" shift
+
+    case "${action}" in
+        start)
+            local name="${1}" shift
+
+            coproc "capture" (cat -u)
+            ;;
+        stop)
+            exec {capture[1]}>&-
+            ;;
+    esac
+}
+
 function log_dev() {
     if bash_compat 4 1
     then
@@ -189,10 +204,10 @@ function log_init() {
     WT_LOG_INFO="${err}"
     WT_LOG_ERROR="${err}"
 
+    export PS4='+ :${LINENO:-} ${FUNCNAME[0]:-}(): '
+
     case "${WT_LOG_LEVEL}" in
         trace)
-            set -x
-            export PS4='+ :${LINENO:-} ${FUNCNAME[0]:-}(): '
             WT_LOG_TRACE="${err}"
             WT_LOG_DEBUG="${err}"
             ;;
@@ -223,6 +238,67 @@ function log() {
 function raw_trace() {
     log "TRACE" >&${WT_LOG_TRACE} || true
     cat >&${WT_LOG_TRACE} || true
+}
+
+function hex_raw_trace() {
+    log "TRACE" >&${WT_LOG_TRACE} || true
+    hexdump -C >&${WT_LOG_TRACE} || true
+}
+
+function raw_log_set_level() {
+    local _level
+
+    if [ "${level}" == "from_line" ]
+    then
+        _level="${line}"
+    else
+        _level="${level}"
+    fi
+
+    case "${_level}" in
+        trace*|TRACE*)
+            level_fd="${WT_LOG_TRACE}"
+            level_name="TRACE"
+            ;;
+        debug*|DEBUG*)
+            level_fd="${WT_LOG_DEBUG}"
+            level_name="DEBUG"
+            ;;
+        info*|INFO*)
+            level_fd="${WT_LOG_INFO}"
+            level_name="INFO "
+            ;;
+        error*|ERROR*)
+            level_fd="${WT_LOG_ERROR}"
+            level_name="ERROR"
+            ;;
+        *)
+            error "invalid LOG_LEVEL *${_level}*, options: from_line, trace, debug, info, error"
+            level_fd="${WT_LOG_ERROR}"
+            level_name="ERROR"
+    esac
+}
+
+function raw_log() {
+    local app="${1}" && shift
+    local level="${1}" && shift
+    local start_index="${1:-0}" && shift
+
+    local line=""
+    local level_fd=""
+    local level_name=""
+
+    if [ "${level}" == "from_line" ]
+    then
+        while read line
+        do
+            raw_log_set_level
+            log "${level_name} [${app}] ${line:${start_index}}" >&${level_fd} || true
+        done
+    else
+        raw_log_set_level
+        cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level}" "[${app}] ")," >&${level_fd} || true
+    fi
 }
 
 function debug() {
@@ -449,6 +525,8 @@ function wg_quick_validate_peers() {
 }
 
 function wg_quick_generate_config_file() {
+    debug
+
     cat <<EOF
 [Interface]
 Address = ${WGQ_HOST_ADDRESS}
@@ -572,6 +650,8 @@ function wg_quick_interface() {
             info "wg-quick up ${WGQ_CONFIG_FILE}"
             wg-quick up "${WGQ_CONFIG_FILE}" 2>&${WT_LOG_DEBUG}
 
+            cat "${WGQ_CONFIG_FILE}" >&${WT_LOG_TRACE}
+
             case "${OSTYPE}" in
                 darwin*)
                     WG_INTERFACE="$(cat "/var/run/wireguard/${WGQ_INTERFACE}.name")"
@@ -648,7 +728,12 @@ function wg_quick_interface() {
 # wireproxy interface
 
 function wireproxy_generate_config_file() {
+    debug
+
     wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+
+    cat "${WGQ_CONFIG_FILE}" >&${WT_LOG_TRACE}
+
     WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wg_quick_generate_config_file
 
     if [ "${WIREPROXY_SOCKS5_BIND}" != "" ]
@@ -764,21 +849,6 @@ function wireproxy_interface() {
                 wireproxy_interface stop
             fi
             ;;
-        log)
-            case "${line}" in
-                ERROR*)
-                    echo "[wireproxy] ${line}" >&${WT_LOG_ERROR}
-                    ;;
-                DEBUG*)
-                    if [ "${WIREPROXY_LOG_LEVEL}" == "debug" ]
-                    then
-                        echo "[wireproxy] ${line}" >&${WT_LOG_DEBUG}
-                    fi
-                    ;;
-                *)
-                    echo "[wireproxy] ${line}" >&${WT_LOG_INFO}
-            esac
-            ;;
         loop)
             info
             local id_list="${1}" && shift
@@ -803,7 +873,7 @@ function wireproxy_interface() {
             } | {
                 while read line
                 do
-                    wireproxy_interface log "${line}"
+                    echo "${line}" | raw_log wireproxy from_line 27
 
                     if ! grep "peer(" <<<"${line}" > /dev/null
                     then
@@ -1100,7 +1170,7 @@ function stun_punch() {
 
             for line in "${stun_buffer[@]}"
             do
-                debug "[stunclient] ${line}"
+                echo "${line}" | raw_log stunclient debug
 
                 case "${line}" in
                     "Binding test: success")
@@ -1335,22 +1405,22 @@ function gpg_ephemeral_encryption() {
             } | {
                 base64 -d
             } | {
-                coproc GPG_PROC (cat -u)
+                capture start
 
                 gpg --decrypt ${GPG_OPTIONS} \
                     --local-user "${id}@${GPG_DOMAIN_NAME}" \
-                    2>&${GPG_PROC[1]}
+                    2>&${capture[1]}
 
-                exec {GPG_PROC[1]}>&-
+                capture stop
 
-                readarray -u "${GPG_PROC[0]}" gpg_buffer
+                readarray -u "${capture[0]}" gpg_buffer
 
                 if grep -iq "Good signature" <<<"${gpg_buffer[*]}"
                 then
-                    (IFS=''; echo -en "${gpg_buffer[*]}";) >&${WT_LOG_DEBUG}
+                    (IFS=''; echo -en "${gpg_buffer[*]}";) | raw_log gpg debug 5
                     return 0
                 else
-                    (IFS=''; echo -en "${gpg_buffer[*]}";) >&${WT_LOG_ERROR}
+                    (IFS=''; echo -en "${gpg_buffer[*]}";) | raw_log gpg error 5
                     return 1
                 fi
             }
