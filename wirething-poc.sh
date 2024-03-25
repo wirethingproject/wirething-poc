@@ -800,7 +800,8 @@ function wireproxy_interface() {
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
             WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
-            WIREPROXY_STATUS_TIMEOUT="${WIREPROXY_STATUS_TIMEOUT:-35}" # 35 seconds
+            WIREPROXY_PEER_STATUS_TIMEOUT="${WIREPROXY_PEER_STATUS_TIMEOUT:-90}" # 35 seconds
+            WIREPROXY_HOST_STATUS_TIMEOUT="${WIREPROXY_HOST_STATUS_TIMEOUT:-120}" # 45 seconds
             WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
             WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
             WIREPROXY_FORWARD_PORT_LIST="${WIREPROXY_FORWARD_PORT_LIST:-}"
@@ -891,13 +892,19 @@ function wireproxy_interface() {
                     fi
 
                     case "${line}" in
+                        *"Sending keepalive packet")
+                            info "send keepalive $(short ${id})"
+                            ;;
+                        *"Sending handshake initiation")
+                            info "send handshake $(short ${id})"
+                            ;;
                         *"Receiving keepalive packet")
                             epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
-                            debug "keepalive $(short ${id})"
+                            info "recv keepalive $(short ${id})"
                             ;;
                         *"Received handshake response")
                             epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
-                            debug "handshake $(short ${id})"
+                            info "recv handshake $(short ${id})"
                             ;;
                     esac
                 done
@@ -945,9 +952,9 @@ function wireproxy_interface() {
 
                         keepalive_delta="$(($(epoch) - ${last_keepalive}))"
 
-                        debug "peer_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_STATUS_TIMEOUT}"
+                        debug "peer_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
 
-                        if [[ ${keepalive_delta} -lt ${WIREPROXY_STATUS_TIMEOUT} ]]
+                        if [[ ${keepalive_delta} -lt ${WIREPROXY_PEER_STATUS_TIMEOUT} ]]
                         then
                             result="online"
                         else
@@ -974,9 +981,9 @@ function wireproxy_interface() {
 
                         keepalive_delta="$(($(epoch) - ${last_keepalive}))"
 
-                        debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_STATUS_TIMEOUT}"
+                        debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
 
-                        if [[ ${keepalive_delta} -lt ${WIREPROXY_STATUS_TIMEOUT} ]]
+                        if [[ ${keepalive_delta} -lt ${WIREPROXY_HOST_STATUS_TIMEOUT} ]]
                         then
                             result="online"
                         else
