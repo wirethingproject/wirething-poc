@@ -1035,7 +1035,7 @@ function udphole_punch() {
     local action="${1}" && shift
     case "${action}" in
         protocol)
-            echo "udp"
+            echo "udp nc"
             ;;
         deps)
             udp deps
@@ -1047,38 +1047,39 @@ function udphole_punch() {
             UDPHOLE_READ_TIMEOUT="${UDPHOLE_READ_TIMEOUT:-10}" # 10 seconds
             ;;
         status)
+            local host_port="${1}" && shift
+            local host_endpoint="${1}" && shift
+
+            debug "local *${host_port}* *${host_endpoint}*"
+
             local result="offline"
 
-            if udphole_punch open
-            then
-                read host_port < <(udphole_punch get port)
-                read host_endpoint < <(udphole_punch get endpoint)
+            {
+                echo "" | nc -w 1 -p "${host_port}" -u "${UDPHOLE_HOSTNAME}" "${UDPHOLE_PORT}" \
+                    || echo ""
+            } | {
+                read endpoint
+                debug "udphole *${host_port}* *${endpoint}*"
 
-                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                if [[ "${host_endpoint}" == "${endpoint}" ]]
                 then
                     result="online"
                 fi
 
-                udphole_punch close
-            fi
-
-            debug "${result:-''}"
-            echo "${result}"
+                info "${result:-''}"
+                echo "${result}"
+            }
             ;;
         open)
             debug
 
             if ! udp open "${UDPHOLE_HOSTNAME}" "${UDPHOLE_PORT}"
             then
-                info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                sleep "${WT_PAUSE_AFTER_ERROR}"
                 return 1
             fi
 
             if ! udp writeline ""
             then
-                info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                sleep "${WT_PAUSE_AFTER_ERROR}"
                 return 1
             fi
             ;;
