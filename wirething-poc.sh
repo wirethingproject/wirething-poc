@@ -1696,7 +1696,7 @@ function wirething() {
                     info "host_port ${port}"
                     echo "${port}" > "${WT_HOST_PORT_FILE}"
 
-                    interface set host_port "${host_port}"
+                    interface set host_port "${port}"
                     ;;
                 host_endpoint)
                     endpoint="${1}" && shift
