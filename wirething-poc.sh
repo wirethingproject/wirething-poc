@@ -2044,9 +2044,9 @@ function on_handshake_timeout_punch_usecase() {
     esac
 }
 
-# peer offline usecase
+# peer status usecase
 
-function peer_offline_usecase() {
+function peer_status_usecase() {
     local action="${1}" && shift
     case "${action}" in
         deps)
@@ -2055,11 +2055,11 @@ function peer_offline_usecase() {
         init)
             info
             WT_PEER_OFFLINE_ENABLED="${WT_PEER_OFFLINE_ENABLED:-true}"
-            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-25}" # 25 seconds
+            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-10}" # 10 seconds
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
-            WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-25}" # 25 seconds
+            WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-30}" # 30 seconds
             ;;
         start)
             local host_id="${1}" && shift
@@ -2069,68 +2069,72 @@ function peer_offline_usecase() {
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
                 info "enabled"
-                peer_offline_usecase loop &
+                peer_status_usecase loop &
             else
                 info "disabled"
             fi
+            ;;
+        online)
+            info
+            while [ "$(interface get peer_status "${peer_id}")" == "online" ]
+            do
+                debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
+                sleep "${WT_PEER_OFFLINE_INTERVAL}"
+            done
+            ;;
+        offline)
+            info
+
+            local since="all"
+            local next_ensure="0"
+
+            while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
+            do
+                if [[ $(epoch) -gt ${next_ensure} ]]
+                then
+                    if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}"
+                    then
+                        next_ensure="$(($(epoch) + "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"))"
+                        info "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
+                    else
+                        info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
+                        sleep "${WT_PAUSE_AFTER_ERROR}"
+                        continue
+                    fi
+                fi
+
+                if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${since}"
+                then
+                    info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
+                    sleep "${WT_PAUSE_AFTER_ERROR}"
+                    continue
+                fi
+
+                debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
+                sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+
+                since="${WT_PEER_OFFLINE_FETCH_SINCE}s"
+            done
             ;;
         loop)
             info "pause before start: ${WT_PEER_OFFLINE_START_DELAY} seconds"
             sleep "${WT_PEER_OFFLINE_START_DELAY}"
 
-            local last_status=""
-
             while true
             do
-                local status="$(interface get peer_status "${peer_id}")"
+                case "$(interface get peer_status "${peer_id}")" in
+                    online)
+                        peer_status_usecase online
+                        ;;
+                    offline)
+                        peer_status_usecase offline
+                        ;;
+                    *)
+                        error "invalid peer status"
+                esac
 
-                if [ "${status}" != "${last_status}" ]
-                then
-                    info "peer status: ${status}"
-                    last_status="${status}"
-                fi
-
-                local since="all"
-                local next_ensure="0"
-
-                while [ "${status}" == "offline" ]
-                do
-                    if [ "${since}" == "all" ]
-                    then
-                        info "fetch_peer_endpoint: started"
-                    fi
-
-                    if [[ $(epoch) -gt ${next_ensure} ]]
-                    then
-                        if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}"
-                        then
-                            next_ensure="$(($(epoch) + "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"))"
-                            info "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
-                        else
-                            break
-                        fi
-                    fi
-
-                    if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${since}"
-                    then
-                        break
-                    fi
-
-                    debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
-                    sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
-
-                    since="${WT_PEER_OFFLINE_FETCH_SINCE}s"
-                    status="$(interface get peer_status "${peer_id}")"
-                done
-
-                if [ "${since}" != "all" ]
-                then
-                    info "fetch_peer_endpoint: stopped"
-                fi
-
-                debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
-                sleep "${WT_PEER_OFFLINE_INTERVAL}"
             done
+
             info "end"
             ;;
     esac
@@ -2152,7 +2156,7 @@ wt_others_list=(
     wirething
     on_interval_punch_usecase
     on_handshake_timeout_punch_usecase
-    peer_offline_usecase
+    peer_status_usecase
 )
 
 function wt_get_alias() {
@@ -2276,7 +2280,7 @@ function wirething_main() {
 
             for _peer_id in ${peer_id_list}
             do
-                peer_offline_usecase start "${_host_id}" "${_peer_id}"
+                peer_status_usecase start "${_host_id}" "${_peer_id}"
             done
             ;;
         wait)
