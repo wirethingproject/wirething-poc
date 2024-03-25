@@ -1862,8 +1862,6 @@ function wirething() {
 
                 case "${encrypted_host_endpoint}" in
                     "error")
-                        info "pause after poll_encrypted_host_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                        sleep "${WT_PAUSE_AFTER_ERROR}"
                         return 1
                         ;;
                     *)
@@ -1910,8 +1908,6 @@ function wirething() {
                     "")
                         ;;
                     "error")
-                        info "pause after poll_encrypted_peer_endpoint error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                        sleep "${WT_PAUSE_AFTER_ERROR}"
                         return 1
                         ;;
                     *)
