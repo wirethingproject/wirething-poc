@@ -185,7 +185,7 @@ function udp() {
 # log
 
 function log_default_time() {
-    if [ "${SYSTEMD_EXEC_PID:-}" != "" ]
+    if [[ "${JOURNAL_STREAM}" != "" || "${SVDIR:-}" != "" ]]
     then
         echo -n "false"
     else
