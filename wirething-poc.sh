@@ -1851,8 +1851,8 @@ function wirething() {
             ;;
         ensure_host_endpoint_is_published)
             info
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
             since="all"
 
             {
