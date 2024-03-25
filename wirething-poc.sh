@@ -1246,19 +1246,21 @@ function ntfy_pubsub() {
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
             NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-25}" # 25 seconds
-            NTFY_POLL_TIMEOUT="${NTFY_POLL_TIMEOUT:-25}" # 25 seconds
+            NTFY_POLL_TIMEOUT="${NTFY_POLL_TIMEOUT:-5}" # 5 seconds
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-720}" # 12 minutes
             NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-${WT_PAUSE_AFTER_ERROR}}" # ${WT_PAUSE_AFTER_ERROR} seconds
             ;;
         status)
-            if curl -sS --head "${NTFY_URL}" 2>&${WT_LOG_TRACE}
+            debug "curl -sS --head ${NTFY_URL}"
+
+            if curl -sS --head "${NTFY_URL}" 2>&${WT_LOG_DEBUG} >&${WT_LOG_DEBUG}
             then
                 result="online"
             else
                 result="offline"
             fi
 
-            debug "${result:-''}"
+            info "${result:-''}"
             echo "${result}"
             ;;
         publish)
