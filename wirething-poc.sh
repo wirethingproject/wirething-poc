@@ -437,9 +437,10 @@ function wg_interface() {
                                 result="online"
                             fi
 
-                            debug "host_status $(short "${host}") ${result:-''}"
-                            echo "${result}"
                         done
+
+                        debug "host_status $(short "${host}") ${result:-''}"
+                        echo "${result}"
                     }
                     ;;
                 latest_handshake)
