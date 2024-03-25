@@ -50,10 +50,10 @@ function utils() {
         init)
             case "${OSTYPE}" in
                 darwin*)
-                    alias ping="ping -c 1 -t 1"
+                    alias ping="ping -c 1 -t 5"
                     ;;
                 linux*)
-                    alias ping="ping -c 1 -W 1"
+                    alias ping="ping -c 1 -W 5"
                     alias base64='base64linux'
                     ;;
                 *)
