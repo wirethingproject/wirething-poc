@@ -1145,31 +1145,47 @@ function stun_punch() {
             STUN_FAMILY="4"
             ;;
         status)
+            local host_port="${1}" && shift
+            local host_endpoint="${1}" && shift
+
+            debug "local *${host_port}* *${host_endpoint}*"
+
             local result="offline"
 
-            if stun_punch open
+            if stun_punch open "${host_port}"
             then
-                read host_port < <(stun_punch get port)
-                read host_endpoint < <(stun_punch get endpoint)
+                read port < <(stun_punch get port)
+                read endpoint < <(stun_punch get endpoint)
 
-                debug "*${host_port}*" "*${host_endpoint}*"
-                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                debug "stun *${port}* *${endpoint}*"
+
+                if [[ "${host_port}" == "${port}" && "${host_endpoint}" == "${endpoint}" ]]
                 then
                     result="online"
                 fi
 
                 stun_punch close
+            else
+                debug "stun ** **"
             fi
 
-            debug "${result:-''}"
+            info "${result:-''}"
             echo "${result}"
             ;;
         open)
             debug "${STUN_HOSTNAME}" "${STUN_PORT}"
+            local host_port="${1:-}" && shift
+
+            if [ "${host_port}" == "" ]
+            then
+                local_port=""
+            else
+                local_port="--localport ${host_port}"
+            fi
 
             coproc STUN_UDP_PROC (cat -u)
 
-            stunclient "${STUN_HOSTNAME}" "${STUN_PORT}" \
+            stunclient "${STUN_HOSTNAME}" "${STUN_PORT}" ${local_port} \
                 --protocol "${STUN_PROTOCOL}" --family "${STUN_FAMILY}" \
                 2>&1 1>&${STUN_UDP_PROC[1]}
 
@@ -1192,8 +1208,6 @@ function stun_punch() {
                         ;;
                     *)
                         error "${line}"
-                        info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                        sleep "${WT_PAUSE_AFTER_ERROR}"
                         return 1
                 esac
             done
