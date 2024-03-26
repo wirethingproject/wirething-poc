@@ -1036,9 +1036,10 @@ function udphole_punch() {
     local action="${1}" && shift
     case "${action}" in
         protocol)
-            echo "udp nc"
+            echo "udp"
             ;;
         deps)
+            echo "nc"
             udp deps
             ;;
         init)
