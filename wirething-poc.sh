@@ -2059,12 +2059,7 @@ function host_status_usecase() {
             WT_HOST_OFFLINE_ENABLED="${WT_HOST_OFFLINE_ENABLED:-true}"
             WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-20}" # 20 seconds
             WT_HOST_OFFLINE_INTERVAL="${WT_HOST_OFFLINE_INTERVAL:-30}" # 30 seconds
-
             WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-60}" # 1 minute
-
-            WT_HOST_OFFLINE_FETCH_SINCE="${WT_HOST_OFFLINE_FETCH_SINCE:-60}" # 1 minute
-            WT_HOST_OFFLINE_FETCH_INTERVAL="${WT_HOST_OFFLINE_FETCH_INTERVAL:-30}" # 30 seconds
-
             WT_HOST_OFFLINE_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/host_status_usecase.pid"
             ;;
         start)
@@ -2151,8 +2146,8 @@ function host_status_usecase() {
                     fi
                 fi
 
-                debug "pause after fetch_host_endpoint: ${WT_HOST_OFFLINE_FETCH_INTERVAL} seconds"
-                sleep "${WT_HOST_OFFLINE_FETCH_INTERVAL}"
+                debug "pause: ${WT_HOST_OFFLINE_INTERVAL} seconds"
+                sleep "${WT_HOST_OFFLINE_INTERVAL}"
             done
             ;;
         loop)
