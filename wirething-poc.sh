@@ -335,7 +335,7 @@ function wg_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg grep cut sed sort tail ping"
+            echo "wg grep cut sed sort tail ping id"
             ;;
         init)
             info
@@ -346,7 +346,7 @@ function wg_interface() {
         up)
             info
 
-            if wg show 2>&${WT_LOG_ERROR} | raw_log "wg show" trace
+            if [ "$(id -u)" != 0 ]
             then
                 die "wireguard must be run as root: user id $(id -u) != 0"
             fi
@@ -601,7 +601,7 @@ function wg_quick_interface() {
             ;;
         deps)
             wg_interface deps
-            echo "wg-quick wg cat grep rm"
+            echo "wg-quick wg cat grep rm id"
             case "${OSTYPE}" in
                 darwin*)
                     echo "wireguard-go"
@@ -638,7 +638,7 @@ function wg_quick_interface() {
         up)
             info
 
-            if wg show 2>&${WT_LOG_ERROR} | raw_log "wg show" trace
+            if [ "$(id -u)" != 0 ]
             then
                 die "wg-quick must be run as root: user id $(id -u) != 0"
             fi
