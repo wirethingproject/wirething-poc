@@ -2204,6 +2204,7 @@ function wirething_main() {
     local action="${1}" && shift
     case "${action}" in
         deps)
+            local option="${1}" && shift
             {
                 echo "mkdir rm sed sort uniq wc"
 
@@ -2212,8 +2213,21 @@ function wirething_main() {
             } | sed "s, ,\n,g" | sort | uniq | {
                 while read dep
                 do
-                    printf "%-13s" "${dep}"
-                    echo "$(type -P "${dep}" || echo "not found")"
+                    case "${option}" in
+                        check)
+                            if ! type -P "${dep}" > /dev/null
+                            then
+                                wirething_main deps list
+                                die "check missing dependency"
+                            fi
+                            ;;
+                        list)
+                            printf "%-13s" "${dep}"
+                            echo "$(type -P "${dep}" || echo "not found")"
+                            ;;
+                        *)
+                            die "invalid option *${option}*, options: check list"
+                    esac
                 done
             }
             ;;
@@ -2228,6 +2242,8 @@ function wirething_main() {
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
 
             info "WT_PID=${WT_PID}"
+
+            wirething_main deps check
 
             wt_type_for_each init
             wt_others_for_each init
@@ -2324,7 +2340,7 @@ function main() {
 
 case "${1:-${WT_ACTION:-}}" in
     deps)
-        wirething_main deps
+        wirething_main deps list
         ;;
     test)
         ;;
