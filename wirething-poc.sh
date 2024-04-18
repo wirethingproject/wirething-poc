@@ -789,7 +789,7 @@ function wireproxy_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg cat cut find grep rm sort tail touch wireproxy"
+            echo "wg cat cut find grep rm sort tail touch"
             ;;
         init)
             info
@@ -805,6 +805,11 @@ function wireproxy_interface() {
             WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
             WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
             WIREPROXY_FORWARD_PORT_LIST="${WIREPROXY_FORWARD_PORT_LIST:-}"
+
+            if [ ! -f "${WIREPROXY_COMAND}" ]
+            then
+                die "command in WIREPROXY_COMAND not found *${WIREPROXY_COMAND}*"
+            fi
 
             wg_quick_interface init
             ;;
