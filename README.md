@@ -65,16 +65,9 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     # box01
 
     ./wirething-poc.sh cli add wire ~/bob.peer
+    WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
 
     # box02
 
     ./wirething-poc.sh cli add wire ~/alice.peer
-
-    # box01
-
     WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
-
-    # box02
-
-    WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
-
