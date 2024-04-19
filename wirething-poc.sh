@@ -30,6 +30,7 @@ function base64linux() {
 
 function utils() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "bash tr readlink sudo base64 grep sed cat openssl ping"
@@ -134,6 +135,7 @@ function log_dev() {
 
 function udp() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "lsof grep sed head"
@@ -330,6 +332,7 @@ function short() {
 
 function wg_interface() {
     local action="${1}" && shift
+
     case "${action}" in
         protocol)
             echo "udp"
@@ -595,6 +598,7 @@ EOF
 
 function wg_quick_interface() {
     local action="${1}" && shift
+
     case "${action}" in
         protocol)
             echo "udp"
@@ -1039,6 +1043,7 @@ function wireproxy_interface() {
 
 function udphole_punch() {
     local action="${1}" && shift
+
     case "${action}" in
         protocol)
             echo "udp"
@@ -1136,6 +1141,7 @@ function udphole_punch() {
 
 function stun_punch() {
     local action="${1}" && shift
+
     case "${action}" in
         protocol)
             echo "udp"
@@ -1244,6 +1250,7 @@ function stun_punch() {
 
 function ntfy_pubsub() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "curl sleep hexdump"
@@ -1364,6 +1371,7 @@ function ntfy_pubsub() {
 
 function gpg_ephemeral_encryption() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "gpg mkdir grep cut sed gpgconf rm base64"
@@ -1519,6 +1527,7 @@ function totp_token() {
 
 function totp_topic() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "cat base64 openssl sed python3"
@@ -1574,6 +1583,7 @@ topic ""        || die "invalid WT_TOPIC_TYPE *${WT_TOPIC_TYPE}*, options: $(opt
 
 function wirething() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "mkdir cat hexdump"
@@ -1942,6 +1952,7 @@ function wirething() {
 
 function host_status_usecase() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "sleep"
@@ -2072,6 +2083,7 @@ function host_status_usecase() {
 
 function peer_status_usecase() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             echo "sleep"
@@ -2202,6 +2214,7 @@ function wt_others_for_each() {
 
 function wirething_main() {
     local action="${1}" && shift
+
     case "${action}" in
         deps)
             local option="${1}" && shift
