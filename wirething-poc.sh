@@ -396,6 +396,20 @@ function fs_store() {
                     | fs_store _set "${domain}" "peers/${hostname}.peer"
             }
             ;;
+        peer)
+            local subaction="${1:?Missing subaction param, options: address}" && shift
+
+            case "${subaction}" in
+                address)
+                    local domain="${1:?Missing domain param}" && shift
+                    local peer="${1:?Missing peer param}" && shift
+
+                    fs_store _get "${domain}" "peers/${peer}.peer" \
+                            | grep "^WT_PEER_ADDRESS=" \
+                            | sed 's,.*"\(.*\)",\1,'
+                    ;;
+            esac
+            ;;
         export)
             local domain="${1}" && shift
             local hostname="${1}" && shift
@@ -529,8 +543,8 @@ EOF
                         cat <<EOF
 WIREPROXY_LOG_LEVEL="info"
 WIREPROXY_COMMAND="${WIREPROXY_COMMAND}"
-WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
-WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
+WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}"
+WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1080}"
 WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST}"
 WIREPROXY_FORWARD_PORT_LIST=""
 EOF
@@ -1100,8 +1114,8 @@ function wireproxy_interface() {
             WIREPROXY_COMMAND="${WIREPROXY_COMMAND:-wireproxy}"
             WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
-            WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
-            WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
+            WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}"
+            WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1080}"
             WIREPROXY_PEER_STATUS_TIMEOUT="${WIREPROXY_PEER_STATUS_TIMEOUT:-90}" # 35 seconds
             WIREPROXY_HOST_STATUS_TIMEOUT="${WIREPROXY_HOST_STATUS_TIMEOUT:-120}" # 45 seconds
             WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
@@ -2653,7 +2667,7 @@ EOF
 }
 
 function cli() {
-    local action="${1:?Missing action param, options: new add export_host_peer_file list show}" && shift
+    local action="${1:?Missing action param, options: new export add peer}" && shift
 
     case "${action}" in
         init)
@@ -2684,6 +2698,9 @@ function cli() {
             local peer_file="${1:?Missing peer_file param}" && shift
 
             store add "${domain}" "${peer_file}"
+            ;;
+        peer)
+            store peer ${@}
             ;;
         *)
             help

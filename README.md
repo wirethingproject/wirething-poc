@@ -19,7 +19,6 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     ln -nfs "<unpacked_path>/wireproxy" ./wireproxy
     export WIREPROXY_COMMAND="${PWD}/wireproxy"
     export WIREPROXY_SOCKS5_BIND="disabled"
-    export WIREPROXY_HTTP_BIND="disabled"
 
     ./wirething-poc.sh cli new local alice
     ./wirething-poc.sh cli export local alice
@@ -71,3 +70,13 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
 
     ./wirething-poc.sh cli add wire ~/alice.peer
     WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
+
+    # box01
+
+    bob_address="$(./wirething-poc.sh cli peer address wire bob)"
+    ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${bob_address}"
+
+    # box02
+
+    alice_address="$(./wirething-poc.sh cli peer address wire alice)"
+    ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${alice_address}"
