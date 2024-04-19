@@ -528,7 +528,7 @@ EOF
                     wireproxy)
                         cat <<EOF
 WIREPROXY_LOG_LEVEL="info"
-WIREPROXY_COMAND="${WIREPROXY_COMAND}"
+WIREPROXY_COMMAND="${WIREPROXY_COMMAND}"
 WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
 WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
 WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST}"
@@ -1097,7 +1097,7 @@ function wireproxy_interface() {
             info
 
             WIREPROXY_LOG_LEVEL="${WIREPROXY_LOG_LEVEL:-}"
-            WIREPROXY_COMAND="${WIREPROXY_COMAND:-wireproxy}"
+            WIREPROXY_COMMAND="${WIREPROXY_COMMAND:-wireproxy}"
             WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
@@ -1108,9 +1108,9 @@ function wireproxy_interface() {
             WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
             WIREPROXY_FORWARD_PORT_LIST="${WIREPROXY_FORWARD_PORT_LIST:-}"
 
-            if [ ! -f "${WIREPROXY_COMAND}" ]
+            if [ ! -f "${WIREPROXY_COMMAND}" ]
             then
-                die "command in WIREPROXY_COMAND not found *${WIREPROXY_COMAND}*"
+                die "command in WIREPROXY_COMMAND not found *${WIREPROXY_COMMAND}*"
             fi
 
             wg_quick_interface init
@@ -1166,7 +1166,7 @@ function wireproxy_interface() {
             {
                 while true
                 do
-                    coproc WIREPROXY_PROC ("${WIREPROXY_COMAND}" -c <(wireproxy_generate_config_file) 2>&1)
+                    coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" -c <(wireproxy_generate_config_file) 2>&1)
                     echo "${!}" > "${WIREPROXY_PID_FILE}"
                     rm -f "${WIREPROXY_RELOAD_FILE}"
 

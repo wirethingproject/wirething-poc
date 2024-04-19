@@ -17,7 +17,7 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     # Terminal 1
 
     ln -nfs "<unpacked_path>/wireproxy" ./wireproxy
-    export WIREPROXY_COMAND="${PWD}/wireproxy"
+    export WIREPROXY_COMMAND="${PWD}/wireproxy"
     export WIREPROXY_SOCKS5_BIND="disabled"
     export WIREPROXY_HTTP_BIND="disabled"
 
@@ -43,7 +43,7 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     # box01
 
     ln -nfs "<unpacked_path>/wireproxy" ./wireproxy
-    export WIREPROXY_COMAND="${PWD}/wireproxy"
+    export WIREPROXY_COMMAND="${PWD}/wireproxy"
     export WIREPROXY_EXPOSE_PORT_LIST="22"
 
     ./wirething-poc.sh cli new wire alice
@@ -54,7 +54,7 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     # box02
 
     ln -nfs "<unpacked_path>/wireproxy" ./wireproxy
-    export WIREPROXY_COMAND="${PWD}/wireproxy"
+    export WIREPROXY_COMMAND="${PWD}/wireproxy"
     export WIREPROXY_EXPOSE_PORT_LIST="22"
 
     ./wirething-poc.sh cli new wire bob
