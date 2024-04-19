@@ -77,6 +77,8 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     ./wirething-poc.sh cli add wire ~/alice.peer
     WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
 
+### SOCKS5
+
     # box01
 
     ./wirething-poc.sh cli peer address wire bob
@@ -88,3 +90,24 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     ./wirething-poc.sh cli peer address wire alice
     alice_address="$(./wirething-poc.sh cli peer address wire alice)"
     ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${alice_address}"
+
+### Tunnel
+
+Using `box01` as example, first get `<bob_address>` using the command
+`./wirething-poc.sh cli peer address wire bob`, then edit the file
+`~/.wirething/wire/v1/env` and change
+
+    WIREPROXY_FORWARD_PORT_LIST=""
+
+to
+
+    WIREPROXY_FORWARD_PORT_LIST="8022:<bob_address>:22"
+
+Then run in one terminal
+
+    WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
+
+and in another
+
+    ssh  -p 8022 "${USER}@127.0.0.1"
+
