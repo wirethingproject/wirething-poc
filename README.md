@@ -12,6 +12,13 @@ Run the command below to see if anything is missing:
 
 Then download and unpack https://github.com/pufferffish/wireproxy/releases.
 
+    os="darwin"
+    arch="amd64"
+    version="v1.0.9"
+
+    wget "https://github.com/pufferffish/wireproxy/releases/download/${version}/wireproxy_${os}_${arch}.tar.gz"
+    tar -xzvf "wireproxy_${os}_${arch}.tar.gz"
+
 ## Testing locally
 
     # Terminal 1
