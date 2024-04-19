@@ -541,7 +541,6 @@ EOF
                 case "${WT_INTERFACE_TYPE}" in
                     wireproxy)
                         cat <<EOF
-WIREPROXY_LOG_LEVEL="info"
 WIREPROXY_COMMAND="${WIREPROXY_COMMAND}"
 WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}"
 WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1080}"
@@ -1110,7 +1109,6 @@ function wireproxy_interface() {
         init)
             info
 
-            WIREPROXY_LOG_LEVEL="${WIREPROXY_LOG_LEVEL:-}"
             WIREPROXY_COMMAND="${WIREPROXY_COMMAND:-wireproxy}"
             WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"

@@ -25,12 +25,11 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
 
     ln -nfs "<unpacked_path>/wireproxy" ./wireproxy
     export WIREPROXY_COMMAND="${PWD}/wireproxy"
-    export WIREPROXY_SOCKS5_BIND="disabled"
 
-    ./wirething-poc.sh cli new local alice
+    WIREPROXY_SOCKS5_BIND="disabled" ./wirething-poc.sh cli new local alice
     ./wirething-poc.sh cli export local alice
 
-    ./wirething-poc.sh cli new remote bob
+    WIREPROXY_SOCKS5_BIND="disabled" ./wirething-poc.sh cli new remote bob
     ./wirething-poc.sh cli export remote bob
 
     ./wirething-poc.sh cli add local ./bob.peer
@@ -64,7 +63,7 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
     export WIREPROXY_EXPOSE_PORT_LIST="22"
 
     ./wirething-poc.sh cli new wire bob
-    ./wirething-poc.sh cli export wre bob
+    ./wirething-poc.sh cli export wire bob
 
     scp bob.peer box01:
 
@@ -80,10 +79,12 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
 
     # box01
 
+    ./wirething-poc.sh cli peer address wire bob
     bob_address="$(./wirething-poc.sh cli peer address wire bob)"
     ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${bob_address}"
 
     # box02
 
+    ./wirething-poc.sh cli peer address wire alice
     alice_address="$(./wirething-poc.sh cli peer address wire alice)"
     ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${alice_address}"
