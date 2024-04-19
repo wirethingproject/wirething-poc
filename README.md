@@ -1,60 +1,77 @@
 # wirething-poc
 
-This proof of concept uses the [ntfy](https://ntfy.sh) service, the project
-[udphole](https://github.com/wirethingproject/udphole) deployed to
-[fly.io](https://fly.io) and [wireguard](https://www.wireguard.com) to connect
-without any login two devices behind NAT.
+This proof of concept uses the [ntfy](https://ntfy.sh) service,
+[STUNTMAN](https://www.stunprotocol.org) and [wireguard](https://www.wireguard.com)
+to connect without any login two devices behind NAT.
 
-    # macOS
+## Dependencies
 
-    brew install bash gnupg wireguard-tools wireguard-go
-    export PATH=/usr/local/bin:${PATH}
+Run the command below to see if anything is missing:
 
-    # Setup
-    bash
-    umask 077
+    ./wirething-poc.sh deps
 
-    mkdir "mesh"
-    cd "mesh"
+Then download and unpack https://github.com/pufferffish/wireproxy/releases.
 
-    mkdir "gpg"
-    export GNUPGHOME="${PWD}/gpg"
-
-
-    name="alice"
-
-    wg genkey > "${name}.key"
-    cat "${name}.key" | wg pubkey > "${name}.pub"
-
-    key_name="$(cat "${name}.pub")@wirething.gpg"
-    gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${key_name}"
-    gpg --armor --export-secret-keys "${key_name}" > "${name}-key.gpg"
-    gpg --armor --export "${key_name}" > "${name}-pub.gpg"
-
-
-    name="bob"
-
-    wg genkey > "${name}.key"
-    cat "${name}.key" | wg pubkey > "${name}.pub"
-
-    key_name="$(cat "${name}.pub")@wirething.gpg"
-    gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${key_name}"
-    gpg --armor --export-secret-keys "${key_name}" > "${name}-key.gpg"
-    gpg --armor --export "${key_name}" > "${name}-pub.gpg"
-
-
-    unset GNUPGHOME
-    rm -rvf "gpg"
+## Testing locally
 
     # Terminal 1
-    sudo WGQ_HOST_PRIVATE_KEY_FILE=alice.key WGQ_PEER_PUBLIC_KEY_FILE_LIST=bob.pub \
-        GPG_FILE_LIST="alice-key.gpg bob-pub.gpg" \
-        ../wirething-poc.sh
+
+    export WIREPROXY_COMAND="<unpacked_path>/wireproxy"
+    export WIREPROXY_SOCKS5_BIND="disabled"
+    export WIREPROXY_HTTP_BIND="disabled"
+
+    ./wirething-poc.sh cli new local alice
+    ./wirething-poc.sh cli export local alice
+
+    ./wirething-poc.sh cli new remote bob
+    ./wirething-poc.sh cli export remote bob
+
+    ./wirething-poc.sh cli add local ./bob.peer
+    ./wirething-poc.sh cli add remote ./alice.peer
 
     # Terminal 2
-    sudo WGQ_HOST_PRIVATE_KEY_FILE=bob.key WGQ_PEER_PUBLIC_KEY_FILE_LIST=alice.pub \
-        GPG_FILE_LIST="bob-key.gpg alice-pub.gpg" \
-        ../wirething-poc.sh
+
+    WT_STORE_ENABLED=true WT_DOMAIN=local ./wirething-poc.sh
 
     # Terminal 3
-    sudo wg show
+
+    WT_STORE_ENABLED=true WT_DOMAIN=remote ./wirething-poc.sh
+
+## Testing using two computers
+
+    # box01
+
+    export WIREPROXY_COMAND="<unpacked_path>/wireproxy"
+    export WIREPROXY_EXPOSE_PORT_LIST="22"
+
+    ./wirething-poc.sh cli new wire alice
+    ./wirething-poc.sh cli export wire alice
+
+    scp alice.peer box02:
+
+    # box02
+
+    export WIREPROXY_COMAND="<unpacked_path>/wireproxy"
+    export WIREPROXY_EXPOSE_PORT_LIST="22"
+
+    ./wirething-poc.sh cli new wire bob
+    ./wirething-poc.sh cli export wre bob
+
+    scp bob.peer box01:
+
+    # box01
+
+    ./wirething-poc.sh cli add wire ~/bob.peer
+
+    # box02
+
+    ./wirething-poc.sh cli add wire ~/alice.peer
+
+    # box01
+
+    WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
+
+    # box02
+
+    WT_STORE_ENABLED=true WT_DOMAIN=wire ./wirething-poc.sh
+

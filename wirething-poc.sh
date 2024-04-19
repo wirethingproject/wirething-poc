@@ -373,7 +373,7 @@ function fs_store() {
             info "${domain_path} created"
 
             fs_store _gen env "${domain}" "${hostname}"
-            fs_store _gen wg "${domain}"
+            fs_store _gen "${WT_INTERFACE_TYPE}" "${domain}"
             fs_store _gen gpg "${domain}"
             ;;
         add)
@@ -421,7 +421,7 @@ WT_PEER_TOPIC_TYPE="${WT_TOPIC_TYPE}"
 EOF
 
                 case "${WT_INTERFACE_TYPE}" in
-                    wg|wg_quick|wireproxy)
+                    wg_quick|wireproxy)
                         cat <<EOF
 WT_PEER_ID="$(fs_store _get "${domain}" "wg.pub")"
 EOF
@@ -522,10 +522,26 @@ WT_PUNCH_TYPE="${WT_PUNCH_TYPE}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE}"
 WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE}"
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE}"
+WT_LOG_LEVEL="info"
 EOF
+                case "${WT_INTERFACE_TYPE}" in
+                    wireproxy)
+                        cat <<EOF
+WIREPROXY_LOG_LEVEL="info"
+WIREPROXY_COMAND="${WIREPROXY_COMAND}"
+WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-127.0.0.1:1080}"
+WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1050}"
+WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST}"
+WIREPROXY_FORWARD_PORT_LIST=""
+EOF
+                        ;;
+                esac
                     } | fs_store _set "${domain}" "env"
                     ;;
                 wg)
+                    local domain="${1}" && shift
+                    ;;
+                wg_quick|wireproxy)
                     local domain="${1}" && shift
 
                     ({
@@ -1023,7 +1039,7 @@ function wireproxy_generate_config_file() {
 
     WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wg_quick_generate_config_file
 
-    if [ "${WIREPROXY_SOCKS5_BIND}" != "" ]
+    if [ "${WIREPROXY_SOCKS5_BIND}" != "disabled" ]
     then
         cat <<EOF
 
@@ -1032,7 +1048,7 @@ BindAddress = ${WIREPROXY_SOCKS5_BIND}
 EOF
     fi
 
-    if [ "${WIREPROXY_HTTP_BIND}" != "" ]
+    if [ "${WIREPROXY_HTTP_BIND}" != "disabled" ]
     then
         cat <<EOF
 
@@ -1839,7 +1855,7 @@ function totp_topic() {
 
 # wirething hacks
 
-WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg_quick}"
+WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wireproxy}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-stun}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE:-gpg_ephemeral}"
