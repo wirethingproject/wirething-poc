@@ -78,6 +78,10 @@ function hash_id() {
     echo "${1}" | openssl sha256 | sed "s,.* ,,"
 }
 
+function options() {
+    set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
+}
+
 # bash compat
 
 function bash_compat() {
@@ -327,6 +331,284 @@ function die() {
 function short() {
     echo "${1::8}"
 }
+
+# store
+
+function fs_store() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            WT_STORE_VERSION="v1"
+
+            if [ "$(id -u)" != 0 ]
+            then
+                WT_STORE_PATH="${WT_STORE_PATH:-${HOME}/.wirething}"
+            else
+                WT_STORE_PATH="${WT_STORE_PATH:-/etc/wirething}"
+            fi
+
+            if [ ! -e "${WT_STORE_PATH}" ]
+            then
+                mkdir -p "${WT_STORE_PATH}"
+            fi
+            ;;
+        create)
+            local domain="${1}" && shift
+            local hostname="${1}" && shift
+
+            local domain_path="${WT_STORE_PATH}/${domain}"
+
+            if [ -e "${domain_path}" ]
+            then
+                die "${domain_path} domain exists"
+            fi
+
+            local version_path="${WT_STORE_PATH}/${domain}/${WT_STORE_VERSION}"
+
+            mkdir -p "${version_path}"/{peers,state}
+
+            echo "${WT_STORE_VERSION}" > "${domain_path}/.version"
+
+            info "${domain_path} created"
+
+            fs_store _gen env "${domain}" "${hostname}"
+            fs_store _gen wg "${domain}"
+            fs_store _gen gpg "${domain}"
+            ;;
+        add)
+            local domain="${1:?Missing domain param}" && shift
+            local peer_file="${1:?Missing peer_file param}" && shift
+
+            if [ ! -e "${peer_file}" ]
+            then
+                die "${peer_file} not found"
+            fi
+
+            {
+                cat "${peer_file}" \
+                    | grep "^WT_PEER_HOSTNAME=" \
+                    | sed 's,.*"\(.*\)",\1,'
+            } | {
+                read hostname
+
+                cat "${peer_file}" \
+                    | fs_store _set "${domain}" "peers/${hostname}.peer"
+            }
+            ;;
+        export)
+            local domain="${1}" && shift
+            local hostname="${1}" && shift
+            local host_peer_file="${1}" && shift
+
+            if [ -e "${host_peer_file}" ]
+            then
+                die "*${host_peer_file}* exists"
+            fi
+
+            ({
+                source "$(fs_store _filename "${domain}" "env")"
+
+                cat <<EOF
+WT_PEER_HOSTNAME="${hostname}"
+WT_PEER_ADDRESS="${WT_ADDRESS}"
+WT_PEER_ROUTE_LIST="${WT_ROUTE_LIST}"
+WT_PEER_INTERFACE_TYPE="${WT_INTERFACE_TYPE}"
+WT_PEER_PUNCH_TYPE="${WT_PUNCH_TYPE}"
+WT_PEER_PUBSUB_TYPE="${WT_PUBSUB_TYPE}"
+WT_PEER_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE}"
+WT_PEER_TOPIC_TYPE="${WT_TOPIC_TYPE}"
+EOF
+
+                case "${WT_INTERFACE_TYPE}" in
+                    wg|wg_quick|wireproxy)
+                        cat <<EOF
+WT_PEER_ID="$(fs_store _get "${domain}" "wg.pub")"
+EOF
+                        ;;
+                esac
+
+                case "${WT_ENCRYPTION_TYPE}" in
+                    gpg_ephemeral)
+                        fs_store _get "${domain}" "gpg.pub"
+                        ;;
+                esac
+            }) > "${host_peer_file}"
+
+            info "${host_peer_file} created"
+            ;;
+        to_env)
+            local domain="${1}" && shift
+
+            local version_path="${WT_STORE_PATH}/${domain}/${WT_STORE_VERSION}"
+
+            WT_CONFIG_PATH="${version_path}"
+
+            if [ "$(id -u)" != 0 ]
+            then
+                WT_RUN_PATH="${WT_RUN_PATH:-${WT_CONFIG_PATH}/_run}"
+            else
+                WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
+            fi
+
+            rm -rf "${WT_CONFIG_PATH}/_env"
+            mkdir -p "${WT_CONFIG_PATH}/_env"
+            mkdir -p "${WT_RUN_PATH}"
+
+            source <(fs_store _get "${domain}" "env")
+
+            WGQ_HOST_ADDRESS="${WT_ADDRESS}/32"
+            WGQ_HOST_PRIVATE_KEY_FILE="wg.key"
+            WGQ_PEER_PUBLIC_KEY_FILE_LIST=""
+            GPG_FILE_LIST="gpg.key gpg.pub"
+
+            while read peer_file
+            do
+                hostname="$(fs_store _get "${domain}" "peers/${peer_file}" \
+                        | grep "^WT_PEER_HOSTNAME=" \
+                        | sed 's,.*"\(.*\)",\1,'
+                )"
+                source <({
+
+                    fs_store _get "${domain}" "peers/${peer_file}" \
+                        | grep "^WT_PEER_.*=" \
+                        | sed "s,^WT_PEER,WT_PEER_$(to_upper ${hostname}),"
+
+                    cat <<EOF
+WGQ_PEER_$(to_upper "${hostname}")_ALLOWED_IPS="\${WT_PEER_$(to_upper "${hostname}")_ROUTE_LIST}"
+EOF
+
+                })
+
+                WGQ_PEER_PUBLIC_KEY_FILE_LIST+=" _env/${hostname}.pub"
+                WGQ_PEER_PUBLIC_KEY_VAR_NAME="WT_PEER_$(to_upper "${hostname}")_ID"
+                echo "${!WGQ_PEER_PUBLIC_KEY_VAR_NAME}" \
+                    | fs_store _set "${domain}" "_env/${hostname}.pub"
+
+                GPG_FILE_LIST+=" _env/${hostname}-pub.gpg"
+                fs_store _get "${domain}" "peers/${peer_file}" \
+                    | grep -v "^WT_PEER_.*=" \
+                    | fs_store _set "${domain}" "_env/${hostname}-pub.gpg"
+            done < <(fs_store _peer_list "${domain}")
+            ;;
+        from_env)
+            local domain="${1}" && shift
+            ;;
+        _peer_list)
+            local domain="${1}" && shift
+
+            local version_path="${WT_STORE_PATH}/${domain}/${WT_STORE_VERSION}"
+
+            ls "${version_path}/peers"
+            ;;
+        _gen)
+            local subaction="${1}" && shift
+
+            case "${subaction}" in
+                env)
+                    local domain="${1}" && shift
+                    local hostname="${1}" && shift
+
+                    address="100.$((${RANDOM} % 62 + 65)).$((${RANDOM} % 254 + 1)).$((${RANDOM} % 254 + 1))"
+
+                    {
+                        cat <<EOF
+WT_DOMAIN="${domain}"
+WT_HOSTNAME="${hostname}"
+WT_ADDRESS="${address}"
+WT_ROUTE_LIST="${address}/32"
+WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE}"
+WT_PUNCH_TYPE="${WT_PUNCH_TYPE}"
+WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE}"
+WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE}"
+WT_TOPIC_TYPE="${WT_TOPIC_TYPE}"
+EOF
+                    } | fs_store _set "${domain}" "env"
+                    ;;
+                wg)
+                    local domain="${1}" && shift
+
+                    ({
+                        umask 077
+
+                        wg genkey \
+                            | fs_store _set "${domain}" "wg.key"
+
+                        fs_store _get "${domain}" "wg.key" \
+                            | wg pubkey \
+                            | fs_store _set "${domain}" "wg.pub"
+                    })
+                    ;;
+                gpg)
+                    local domain="${1}" && shift
+
+                    ({
+                        umask 077
+
+                        export GNUPGHOME="$(mktemp -d)"
+
+                        {
+                            fs_store _get "${domain}" "wg.pub"
+                        } | {
+                            read host_id
+
+                            local key_name="${host_id}@wirething.gpg"
+
+                            gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${key_name}" \
+                                1>&${WT_LOG_DEBUG} 2>&${WT_LOG_DEBUG}
+
+                            gpg --armor --export-secret-keys "${key_name}" 2>&${WT_LOG_DEBUG} \
+                                | fs_store _set "${domain}" "gpg.key"
+
+                            gpg --armor --export "${key_name}" 2>&${WT_LOG_DEBUG} \
+                                | fs_store _set "${domain}" "gpg.pub"
+                        }
+
+                        rm -rf "${GNUPGHOME}"
+                        unset GNUPGHOME
+                    })
+                    ;;
+            esac
+            ;;
+        _filename)
+            local domain="${1}" && shift
+            local filename="${1}" && shift
+
+            local version_path="${WT_STORE_PATH}/${domain}/${WT_STORE_VERSION}"
+
+            echo "${version_path}/${filename}"
+            ;;
+        _set)
+            local domain="${1}" && shift
+            local filename="${1}" && shift
+
+            local version_path="${WT_STORE_PATH}/${domain}/${WT_STORE_VERSION}"
+
+            cat > "${version_path}/${filename}"
+
+            info "${version_path}/${filename} created"
+            ;;
+        _get)
+            local domain="${1}" && shift
+            local filename="${1}" && shift
+
+            local version_path="${WT_STORE_PATH}/${domain}/${WT_STORE_VERSION}"
+
+            cat "${version_path}/${filename}"
+            ;;
+    esac
+}
+
+WT_STORE_TYPE="${WT_STORE_TYPE:-fs}"
+alias store="${WT_STORE_TYPE}_store"
+store ""    || die "invalid WT_STORE_TYPE *${WT_STORE_TYPE}*, options: $(options store)"
+
+
+if [ "${WT_STORE_ENABLED:-false}" == "true" ]
+then
+    store init
+    store to_env "${WT_DOMAIN:?Variable not set}"
+fi
 
 # wg interface
 
@@ -1388,9 +1670,9 @@ function gpg_ephemeral_encryption() {
 
             for gpg_file in ${GPG_FILE_LIST}
             do
-                if [ ! -f "${gpg_file}" ]
+                if [ ! -f "${WT_CONFIG_PATH}/${gpg_file}" ]
                 then
-                    die "file in GPG_FILE_LIST not found *${gpg_file}*"
+                    die "file in GPG_FILE_LIST not found *${WT_CONFIG_PATH}/${gpg_file}*"
                 fi
             done
             ;;
@@ -1401,10 +1683,10 @@ function gpg_ephemeral_encryption() {
 
             echo -ne "${GPG_AGENT_CONF}" > "${GNUPGHOME}/gpg-agent.conf"
 
-            for file in ${GPG_FILE_LIST}
+            for gpg_file in ${GPG_FILE_LIST}
             do
-                gpg ${GPG_OPTIONS} --import ${file} 2>&${WT_LOG_DEBUG}
-                gpg ${GPG_OPTIONS} --show-keys --with-colons "${file}" 2>&${WT_LOG_DEBUG} \
+                gpg ${GPG_OPTIONS} --import "${WT_CONFIG_PATH}/${gpg_file}" 2>&${WT_LOG_DEBUG}
+                gpg ${GPG_OPTIONS} --show-keys --with-colons "${WT_CONFIG_PATH}/${gpg_file}" 2>&${WT_LOG_DEBUG} \
                     | grep "fpr" | cut -f "10-" -d ":" | sed "s,:,:6:," \
                     | gpg ${GPG_OPTIONS} --import-ownertrust 2>&${WT_LOG_DEBUG}
             done
@@ -1557,10 +1839,6 @@ function totp_topic() {
 
 # wirething hacks
 
-function options() {
-    set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
-}
-
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wg_quick}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-stun}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
@@ -1590,11 +1868,11 @@ function wirething() {
             ;;
         init)
             info
-            WT_STATE="${WT_CONFIG_PATH}/state"
-            WT_HOST_PORT_FILE="${WT_STATE}/host_port"
-            WT_HOST_ENDPOINT_FILE="${WT_STATE}/host_endpoint"
-            WT_PEER_ENDPOINT_PATH="${WT_STATE}/peer_endpoint"
-            WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE}/peer_last_keepalive"
+            WT_STATE_PATH="${WT_CONFIG_PATH}/state"
+            WT_HOST_PORT_FILE="${WT_STATE_PATH}/host_port"
+            WT_HOST_ENDPOINT_FILE="${WT_STATE_PATH}/host_endpoint"
+            WT_PEER_ENDPOINT_PATH="${WT_STATE_PATH}/peer_endpoint"
+            WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE_PATH}/peer_last_keepalive"
             ;;
         up)
             info
@@ -1606,7 +1884,7 @@ function wirething() {
                 die "punch *${WT_PUNCH_TYPE}=${punch_protocol}* and interface *${WT_INTERFACE_TYPE}=${interface_protocol}* protocol differ"
             fi
 
-            mkdir -p "${WT_STATE}"
+            mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
             mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
 
@@ -2249,8 +2527,16 @@ function wirething_main() {
 
             set_pid
             WT_PID="${PID}"
-            WT_CONFIG_PATH="${PWD}"
-            WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
+
+            WT_CONFIG_PATH="${WT_CONFIG_PATH:-${PWD}}"
+
+            if [ "$(id -u)" != 0 ]
+            then
+                WT_RUN_PATH="${WT_RUN_PATH:-${WT_CONFIG_PATH}/run}"
+            else
+                WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
+            fi
+
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
 
