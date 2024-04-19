@@ -2628,6 +2628,52 @@ function wirething_main() {
     esac
 }
 
+# cli
+
+function help() {
+    cat <<EOF
+Usage: wirething-poc.sh cli <action>
+EOF
+}
+
+function cli() {
+    local action="${1:?Missing action param, options: new add export_host_peer_file list show}" && shift
+
+    case "${action}" in
+        init)
+            store init
+            ;;
+        to_env|from_env)
+            local domain="${1:?Missing domain param}" && shift
+            set -a
+            store "${action}" "${domain}"
+            set +a
+            printenv | grep "^WGQ_\|WT_\|GPG_" | sort
+            ;;
+        new)
+            local domain="${1:?Missing domain param}" && shift
+            local hostname="${1:?Missing hostname param}" && shift
+
+            store create "${domain}" "${hostname}"
+            ;;
+        export)
+            local domain="${1:?Missing domain param}" && shift
+            local hostname="${1:?Missing hostname param}" && shift
+            local host_peer_file="${1:-${PWD}/${hostname}.peer}" && shift || true
+
+            store export "${domain}" "${hostname}" "${host_peer_file}"
+            ;;
+        add)
+            local domain="${1:?Missing domain param}" && shift
+            local peer_file="${1:?Missing peer_file param}" && shift
+
+            store add "${domain}" "${peer_file}"
+            ;;
+        *)
+            help
+    esac
+}
+
 # main
 
 function main() {
@@ -2638,6 +2684,11 @@ function main() {
 }
 
 case "${1:-${WT_ACTION:-}}" in
+    cli)
+        shift || true
+        cli init
+        cli ${@}
+        ;;
     deps)
         wirething_main deps list
         ;;
