@@ -1203,7 +1203,8 @@ function wireproxy_interface() {
             } | {
                 while read line
                 do
-                    echo "${line}" | raw_log wireproxy from_line 27
+                    echo "${line}" | { grep "Received\|Receiving\|Sending" || true; } | raw_log wireproxy trace 27
+                    echo "${line}" | { grep -v "Received\|Receiving\|Sending" || true; } | raw_log wireproxy from_line 27
 
                     if ! grep "peer(" <<<"${line}" > /dev/null
                     then
@@ -1220,19 +1221,11 @@ function wireproxy_interface() {
                     fi
 
                     case "${line}" in
-                        *"Sending keepalive packet")
-                            info "send keepalive $(short ${id})"
-                            ;;
-                        *"Sending handshake initiation")
-                            info "send handshake $(short ${id})"
-                            ;;
                         *"Receiving keepalive packet")
                             epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
-                            info "recv keepalive $(short ${id})"
                             ;;
                         *"Received handshake response")
                             epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
-                            info "recv handshake $(short ${id})"
                             ;;
                     esac
                 done
