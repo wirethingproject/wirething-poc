@@ -6,6 +6,10 @@ to connect without any login two devices behind NAT.
 
 ## Dependencies
 
+On `macOS`, install the packages below:
+
+    brew install bash gnupg stuntman wireguard-tools
+
 Run the command below to see if anything is missing:
 
     ./wirething-poc.sh deps
@@ -83,13 +87,13 @@ Then download and unpack https://github.com/pufferffish/wireproxy/releases.
 
     ./wirething-poc.sh cli peer address wire bob
     bob_address="$(./wirething-poc.sh cli peer address wire bob)"
-    ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${bob_address}"
+    ssh -o ProxyCommand='nc -X 5 -x 127.0.0.1:1080 %h %p' "${USER}@${bob_address}"
 
     # box02
 
     ./wirething-poc.sh cli peer address wire alice
     alice_address="$(./wirething-poc.sh cli peer address wire alice)"
-    ssh -o ProxyCommand='nc -X 5 --proxy 127.0.0.1:1080 %h %p' "${USER}@${alice_address}"
+    ssh -o ProxyCommand='nc -X 5 -x 127.0.0.1:1080 %h %p' "${USER}@${alice_address}"
 
 ### Tunnel
 
