@@ -63,4 +63,3 @@ In the bellow configuration, replace _<domain>_ with the chosen name.
       systemd.services."wirething-poc@" = wirethingUnit;
       systemd.services."wirething-poc@<domain>" = wirethingService;
     }
-
