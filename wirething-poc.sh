@@ -279,7 +279,6 @@ function raw_log_set_level() {
             level_name="ERROR"
             ;;
         *)
-            error "invalid LOG_LEVEL *${_level}*, options: from_line, trace, debug, info, error"
             level_fd="${WT_LOG_ERROR}"
             level_name="ERROR"
     esac
@@ -303,22 +302,28 @@ function raw_log() {
         done
     else
         raw_log_set_level
-        cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level}" "[${app}] ")," >&${level_fd} || true
+        cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level_name}" "[${app}] ")," >&${level_fd} || true
     fi
 }
 
+function log_set_prefix() {
+    local hostname="${ID_TO_HOSTNAME["$(short "${peer_id:-"${host_id:---------}"}")"]:-}---------"
+    local id="${peer_id:-${host_id:---------}}---------"
+    prefix="[$(short4 "${hostname}")-$(short4 "${id}")] ${FUNCNAME[2]:-} ${action:-}"
+}
+
 function debug() {
-    local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
+    log_set_prefix
     log "DEBUG" "${prefix}" "${@}" >&${WT_LOG_DEBUG} || true
 }
 
 function info() {
-    local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
+    log_set_prefix
     log "INFO " "${prefix}" "${@}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
-    local prefix="$(short "${peer_id:-${host_id:---------}}") ${FUNCNAME[1]:-} ${action:-}"
+    log_set_prefix
     log "ERROR" "${prefix}" "${@}" >&${WT_LOG_ERROR} || true
 }
 
@@ -328,8 +333,12 @@ function die() {
     exit 1
 }
 
+function short4() {
+    echo "${1::4}"
+}
+
 function short() {
-    echo "${1::8}"
+    echo "${1::9}"
 }
 
 # store
