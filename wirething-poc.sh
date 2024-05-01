@@ -33,7 +33,7 @@ function utils() {
 
     case "${action}" in
         deps)
-            echo "bash tr readlink sudo base64 grep sed cat openssl ping"
+            echo "bash tr readlink base64 grep sed cat openssl ping"
 
             case "${OSTYPE}" in
                 darwin*)
@@ -1112,7 +1112,7 @@ function wireproxy_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg cat cut find grep rm sort tail touch"
+            echo "wg cat cut find grep rm sort tail touch wireproxy"
             ;;
         init)
             info
@@ -2493,6 +2493,12 @@ wt_type_list=(
     topic
 )
 
+wt_optional_list=(
+    wg_interface
+    wg_quick_interface
+    udphole_punch
+)
+
 wt_others_list=(
     utils
     udp
@@ -2512,6 +2518,13 @@ function wt_type_for_each() {
     done
 }
 
+function wt_optional_for_each() {
+    for wt_optional in "${wt_optional_list[@]}"
+    do
+        "${wt_optional}" "${1}"
+    done
+}
+
 function wt_others_for_each() {
     for wt_other in "${wt_others_list[@]}"
     do
@@ -2525,11 +2538,13 @@ function wirething_main() {
     case "${action}" in
         deps)
             local option="${1}" && shift
+
             {
                 echo "mkdir rm sed sort uniq wc"
 
                 wt_type_for_each deps
                 wt_others_for_each deps
+                wt_optional_for_each deps
             } | sed "s, ,\n,g" | sort | uniq | {
                 while read dep
                 do
@@ -2543,7 +2558,7 @@ function wirething_main() {
                             ;;
                         list)
                             printf "%-13s" "${dep}"
-                            echo "$(readlink -f "$(type -P "${dep}")" || echo "not found")"
+                            echo "$(readlink -f "$(PATH="${PATH}:${PWD}" type -P "${dep}")" || echo "not found")"
                             ;;
                         *)
                             die "invalid option *${option}*, options: check list"
