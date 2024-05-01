@@ -18,6 +18,30 @@ See the README.md for setup instrunctions not related with NixOS.
 
 In the bellow configuration, replace _<domain>_ with the chosen name.
 
+    { config, pkgs, ... }:
+
+    let
+      wirethingUnit = {
+        serviceConfig = {
+          Type = "simple";
+          Restart = "on-failure";
+          RestartSec = "30s";
+          ExecStart = "/etc/nixos/wirething-poc/src/wirething-poc.sh";
+          WorkingDirectory = "/etc/nixos/wirething-poc/%i";
+          EnvironmentFile = "/etc/nixos/wirething-poc/%i/env";
+          SyslogIdentifier = "wirething-poc";
+        };
+      };
+      wirethingService = {
+        enable = true;
+        path = with pkgs; [ bash util-linux lsof curl gnupg openssl python3Minimal iputils procps stuntman wireguard-go wireguard-tools ];
+        after=[ "network-online.target" "nss-lookup.target" ];
+        wants=[ "network-online.target" "nss-lookup.target" ];
+        wantedBy = [ "multi-user.target" ];
+        overrideStrategy = "asDropin";
+      };
+    in
+    {
       environment.systemPackages = with pkgs; [
         git
         gnupg
@@ -29,22 +53,7 @@ In the bellow configuration, replace _<domain>_ with the chosen name.
         wireguard-tools
       ];
 
-      systemd.services = {
-        "wirething-poc@".serviceConfig = {
-          Type = "simple";
-          Restart = "on-failure";
-          RestartSec = "30s";
-          ExecStart = "/etc/nixos/wirething-poc/src/wirething-poc.sh";
-          WorkingDirectory = "/etc/nixos/wirething-poc/%i";
-          EnvironmentFile = "/etc/nixos/wirething-poc/%i/env";
-          SyslogIdentifier = "wirething-poc";
-        };
-        "wirething-poc@<domain>" = {
-          enable = true;
-          path = with pkgs; [ bash util-linux lsof curl gnupg openssl python3Minimal iputils procps stuntman wireguard-go wireguard-tools ];
-          after=[ "network-online.target" "nss-lookup.target" ];
-          wants=[ "network-online.target" "nss-lookup.target" ];
-          wantedBy = [ "multi-user.target" ];
-          overrideStrategy = "asDropin";
-        };
-      };
+      systemd.services."wirething-poc@" = wirethingUnit;
+      systemd.services."wirething-poc@<domain>" = wirethingService;
+    }
+
