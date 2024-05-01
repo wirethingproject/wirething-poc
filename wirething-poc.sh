@@ -2543,7 +2543,7 @@ function wirething_main() {
                             ;;
                         list)
                             printf "%-13s" "${dep}"
-                            echo "$(type -P "${dep}" || echo "not found")"
+                            echo "$(readlink -f "$(type -P "${dep}")" || echo "not found")"
                             ;;
                         *)
                             die "invalid option *${option}*, options: check list"

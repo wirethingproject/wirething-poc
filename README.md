@@ -8,7 +8,7 @@ to connect without any login two devices behind NAT.
 
 On `macOS`, install the packages below:
 
-    brew install bash gnupg stuntman wireguard-tools
+    brew install bash gnupg stuntman wireguard-go wireguard-tools
 
 Run the command below to see if anything is missing:
 
