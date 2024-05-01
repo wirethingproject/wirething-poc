@@ -43,12 +43,19 @@ In the bellow configuration, replace _<domain>_ with the chosen name.
     in
     {
       environment.systemPackages = with pkgs; [
+        bash-interactive
+        coreutils-full
+        curl
+        findutils
         git
+        gnugrep
         gnupg
+        gnused
         lsof
         openssl
         python3Minimal
         stuntman
+        util-linux
         wireguard-go
         wireguard-tools
       ];
