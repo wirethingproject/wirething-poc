@@ -2553,7 +2553,7 @@ function wirething_main() {
                             if ! type -P "${dep}" > /dev/null
                             then
                                 wirething_main deps list
-                                die "check missing dependency ${dep}"
+                                die "check missing dependency: ${dep}"
                             fi
                             ;;
                         list)
