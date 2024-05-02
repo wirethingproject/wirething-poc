@@ -1104,6 +1104,22 @@ EOF
     done
 }
 
+
+function wireproxy_compat() {
+    local major minor patch
+
+    IFS=. read major minor patch < <("${WIREPROXY_COMMAND}" --version | cut -f 3 -d " ")
+
+    if [[ (${major} -gt ${1}) ||
+          (${major} -eq ${1} && ${minor} -gt ${2}) ||
+          (${major} -eq ${1} && ${minor} -eq ${2} && ${patch} -ge ${3}) ]]
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
 function wireproxy_interface() {
     local action="${1}" && shift
 
@@ -1122,6 +1138,7 @@ function wireproxy_interface() {
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}"
             WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1080}"
+            WIREPROXY_HEALTH_BIND="${WIREPROXY_HEALTH_BIND:-127.0.0.1:9080}"
             WIREPROXY_PEER_STATUS_TIMEOUT="${WIREPROXY_PEER_STATUS_TIMEOUT:-90}" # 35 seconds
             WIREPROXY_HOST_STATUS_TIMEOUT="${WIREPROXY_HOST_STATUS_TIMEOUT:-120}" # 45 seconds
             WIREPROXY_HANDSHAKE_TIMEOUT="${WIREPROXY_HANDSHAKE_TIMEOUT:-135}" # 135 seconds
@@ -1131,6 +1148,11 @@ function wireproxy_interface() {
             if [ ! -f "${WIREPROXY_COMMAND}" ]
             then
                 die "command in WIREPROXY_COMMAND not found *${WIREPROXY_COMMAND}*"
+            fi
+
+            if ! wireproxy_compat 1 0 9
+            then
+                WIREPROXY_HEALTH_BIND="disabled"
             fi
 
             wg_quick_interface init
@@ -1182,11 +1204,17 @@ function wireproxy_interface() {
         loop)
             info
             local id_list="${1}" && shift
+            local wireproxy_params=""
+
+            if [ "${WIREPROXY_HEALTH_BIND}" != "disabled" ]
+            then
+                wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
+            fi
 
             {
                 while true
                 do
-                    coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" -c <(wireproxy_generate_config_file) 2>&1)
+                    coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(wireproxy_generate_config_file) 2>&1)
                     echo "${!}" > "${WIREPROXY_PID_FILE}"
                     rm -f "${WIREPROXY_RELOAD_FILE}"
 
