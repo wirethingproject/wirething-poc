@@ -1112,7 +1112,7 @@ function wireproxy_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg cat cut find grep rm sort tail touch wireproxy"
+            echo "wg cat cut find grep rm sort tail touch"
             ;;
         init)
             info
@@ -2553,12 +2553,12 @@ function wirething_main() {
                             if ! type -P "${dep}" > /dev/null
                             then
                                 wirething_main deps list
-                                die "check missing dependency"
+                                die "check missing dependency ${dep}"
                             fi
                             ;;
                         list)
                             printf "%-13s" "${dep}"
-                            echo "$(readlink -f "$(PATH="${PATH}:${PWD}" type -P "${dep}")" || echo "not found")"
+                            echo "$(readlink -f "$(type -P "${dep}")" || echo "not found")"
                             ;;
                         *)
                             die "invalid option *${option}*, options: check list"
