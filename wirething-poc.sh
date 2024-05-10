@@ -1154,6 +1154,7 @@ function wireproxy_interface() {
             if ! wireproxy_compat 1 0 9
             then
                 WIREPROXY_HEALTH_BIND="disabled"
+                error "health bind disabled, wireproxy not compatible with version 1.0.9"
             fi
 
             wg_quick_interface init
@@ -1221,16 +1222,20 @@ function wireproxy_interface() {
         loop)
             info
             local id_list="${1}" && shift
-            local wireproxy_params=""
-
-            if [ "${WIREPROXY_HEALTH_BIND}" != "disabled" ]
-            then
-                wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
-            fi
 
             {
                 while true
                 do
+                    local wireproxy_params=""
+
+                    if nc -z ${WIREPROXY_HEALTH_BIND/:/ } 2>&${null}
+                    then
+                        error "health bind disabled, tcp ${WIREPROXY_HEALTH_BIND} address already in use"
+                    elif [ "${WIREPROXY_HEALTH_BIND}" != "disabled" ]
+                    then
+                        wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
+                    fi
+
                     coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(wireproxy_generate_config_file) 2>&1)
                     echo "${!}" > "${WIREPROXY_PID_FILE}"
                     rm -f "${WIREPROXY_RELOAD_FILE}"
