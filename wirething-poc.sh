@@ -1136,6 +1136,7 @@ function wireproxy_interface() {
             WIREPROXY_COMMAND="${WIREPROXY_COMMAND:-wireproxy}"
             WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
+            WIREPROXY_READY_FILE="${WT_EPHEMERAL_PATH}/wireproxy.ready"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}"
             WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1080}"
             WIREPROXY_HEALTH_BIND="${WIREPROXY_HEALTH_BIND:-127.0.0.1:9080}"
@@ -1186,6 +1187,7 @@ function wireproxy_interface() {
                 } | {
                     read pid
                     info "kill -TERM ${pid}"
+                    rm -f "${WIREPROXY_READY_FILE}"
                     kill -TERM "${pid}" || true
                 }
             fi
@@ -1196,9 +1198,24 @@ function wireproxy_interface() {
 
             if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
             then
+                local reload_timeout="$(($(epoch) + 30))"
+                local reload_status="success"
+
                 touch "${WIREPROXY_RELOAD_FILE}"
                 wireproxy_interface stop
-                sleep 5 # TODO replace this sleep with a wait for wireproxy be ready
+
+                while [ ! -f "${WIREPROXY_READY_FILE}" ]
+                do
+                    if [[ "$(epoch)" -gt "${reload_timeout}" ]]
+                    then
+                        error "timeouted"
+                        reload_status="failed"
+                        break
+                    fi
+                    sleep 1
+                done
+
+                info "${reload_status}"
             fi
             ;;
         loop)
@@ -1221,6 +1238,8 @@ function wireproxy_interface() {
                     cat <&${WIREPROXY_PROC[0]} || true
                     rm -f "${WIREPROXY_PID_FILE}"
 
+                    sleep 5 # TODO evaluate if this sleep still needed
+
                     if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
                     then
                         break
@@ -1232,30 +1251,51 @@ function wireproxy_interface() {
                 while read line
                 do
                     echo "${line}" | { grep "Received\|Receiving\|Sending" || true; } | raw_log wireproxy trace 27
-                    echo "${line}" | { grep -v "Received\|Receiving\|Sending" || true; } | raw_log wireproxy from_line 27
+
+                    echo "${line}" | { grep -v "Received\|Receiving\|Sending" || true; } | {
+                        case "${line}" in
+                            "DEBUG: "*|"ERROR: "*)
+                                raw_log wireproxy from_line 27
+                                ;;
+                            *)
+                                raw_log wireproxy from_line 20
+                        esac
+                    }
 
                     if ! grep "peer(" <<<"${line}" > /dev/null
                     then
+                        case "${line}" in
+                            "DEBUG"*"Interface state was Down, requested Up, now Up")
+                                touch "${WIREPROXY_READY_FILE}"
+                                info "ready"
+                                ;;
+                            "ERROR"*"address already in use")
+                                wirething set host_port 0 &
+                                ;;
+                            "panic: listen tcp ${WIREPROXY_HEALTH_BIND}: bind: address already in use")
+                                # TODO disable health bind if address already in use
+                                ;;
+                        esac
                         continue
+                    else
+                        local peer_regex="$(echo "${line}" | sed "s,.*peer(\(.*\)…\(.*\)) - .*,\1.*\2=,")"
+                        local id="$(echo -e "${id_list}" | grep "${peer_regex}" || true)"
+
+                        if [ "${id}" == "" ]
+                        then
+                            error "regex=${peer_regex:=''} id="${id:=''}" peer not found: ${line}"
+                            continue
+                        fi
+
+                        case "${line}" in
+                            *"Receiving keepalive packet")
+                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
+                                ;;
+                            *"Received handshake response")
+                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
+                                ;;
+                        esac
                     fi
-
-                    peer_regex="$(echo "${line}" | sed "s,.*peer(\(.*\)…\(.*\)) - .*,\1.*\2=,")"
-                    id="$(echo -e "${id_list}" | grep "${peer_regex}" || true)"
-
-                    if [ "${id}" == "" ]
-                    then
-                        error "regex=${peer_regex:=''} id="${id:=''}" peer not found: ${line}"
-                        continue
-                    fi
-
-                    case "${line}" in
-                        *"Receiving keepalive packet")
-                            epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
-                            ;;
-                        *"Received handshake response")
-                            epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
-                            ;;
-                    esac
                 done
             }
             ;;
@@ -2342,7 +2382,7 @@ function host_status_usecase() {
 
                         wirething set host_port "0"
 
-                        if [ "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]
+                        if [[ "${host_port}" != "0" && "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]]
                         then
                             wirething set host_port "${host_port}"
                         else
