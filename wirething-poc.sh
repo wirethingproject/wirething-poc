@@ -54,6 +54,57 @@ function bash_compat() {
 
 bash_compat init
 
+# state
+
+function state() {
+    local context="${1}" && shift
+
+    case "${context}" in
+        deps)
+            ;;
+        init)
+            declare -g -A _state
+
+            alias host="state host"
+            alias peer="state peer"
+            ;;
+        dump)
+            declare -p _state
+            ;;
+        host)
+            local action="${1}" && shift
+            local key="${1}" && shift
+
+            case "${action}" in
+                get)
+                    echo "${_state["${context}-${key}"]}"
+                    ;;
+                set)
+                    local value="${1}" && shift
+                    _state["${context}-${key}"]="${value}"
+                    ;;
+            esac
+            ;;
+        peer)
+            local peer_name="${1}" && shift
+            local action="${1}" && shift
+            local key="${1}" && shift
+
+            case "${action}" in
+                get)
+                    echo "${_state["${context}-${peer_name}-${key}"]}"
+                    ;;
+                set)
+                    local value="${1}" && shift
+                    _state["${context}-${peer_name}-${key}"]="${value}"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+state init
+
 # utils
 
 function base64linux() {
@@ -2562,6 +2613,7 @@ wt_optional_list=(
 
 wt_others_list=(
     bash_compat
+    state
     utils
     udp
     wirething
