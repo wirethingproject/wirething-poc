@@ -8,10 +8,6 @@ export LC_ALL=C
 
 # bash compat
 
-# Source:
-# - https://github.com/bminor/bash/blob/master/NEWS
-# - https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
-
 function is_bash_compat() {
     if [[ (${BASH_VERSINFO[0]} -gt ${1}) ||
           (${BASH_VERSINFO[0]} -eq ${1} && ${BASH_VERSINFO[1]} -ge ${2}) ]]
@@ -29,6 +25,9 @@ function bash_compat() {
         deps)
             ;;
         init)
+            # changelog:    https://github.com/bminor/bash/blob/master/NEWS
+            # bash changes: https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
+
             if ! is_bash_compat 5 0
             then
                 version="${BASH_VERSINFO[@]}"
