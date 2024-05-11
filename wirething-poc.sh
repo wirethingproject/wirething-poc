@@ -641,9 +641,9 @@ then
     store to_env "${WT_DOMAIN:?Variable not set}"
 fi
 
-# cache
+# bash cache
 
-function cache() {
+function bash_cache() {
     local action="${1}" && shift
 
     case "${action}" in
@@ -653,7 +653,7 @@ function cache() {
         init)
             info
 
-            WT_CACHE_FILENAME="${WT_CACHE_FILENAME:-${WT_STATE_PATH}/_cache}"
+            WT_CACHE_FILENAME="${WT_CACHE_FILENAME:-${WT_STATE_PATH}/_bash_cache}"
 
             declare -g -A _cache
             ;;
@@ -1977,18 +1977,21 @@ function totp_topic() {
 
 # wirething hacks
 
+WT_CACHE_TYPE="${WT_CACHE_TYPE:-bash}"
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wireproxy}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-stun}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE:-gpg_ephemeral}"
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-totp}"
 
+alias cache="${WT_CACHE_TYPE}_cache"
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
 alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
 alias encryption="${WT_ENCRYPTION_TYPE}_encryption"
 alias topic="${WT_TOPIC_TYPE}_topic"
 
+cache ""        || die "invalid WT_CACHE_TYPE *${WT_CACHE_TYPE}*, options: $(options cache)"
 interface ""    || die "invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
 punch ""        || die "invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
 pubsub ""       || die "invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
@@ -2595,6 +2598,7 @@ function peer_status_usecase() {
 # wirething main
 
 wt_type_list=(
+    cache
     interface
     punch
     pubsub
@@ -2610,7 +2614,6 @@ wt_optional_list=(
 
 wt_others_list=(
     bash_compat
-    cache
     utils
     udp
     wirething
