@@ -934,11 +934,11 @@ function wg_quick_interface() {
         init)
             info
 
-            if bash_compat 4 0
+            if bash_compat 4 1
             then
                 :
             else
-                die "bash < 4.0 not supported"
+                die "bash < 4.1 not supported"
             fi
 
             WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
