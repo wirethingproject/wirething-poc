@@ -640,9 +640,9 @@ then
     store to_env "${WT_DOMAIN:?Variable not set}"
 fi
 
-# state
+# cache
 
-function state() {
+function cache() {
     local action="${1}" && shift
 
     case "${action}" in
@@ -652,37 +652,37 @@ function state() {
         init)
             info
 
-            WT_STATE_FILENAME="${WT_STATE_FILENAME:-${WT_STATE_PATH}/_state}"
+            WT_CACHE_FILENAME="${WT_CACHE_FILENAME:-${WT_STATE_PATH}/_cache}"
 
-            declare -g -A _state
+            declare -g -A _cache
             ;;
         up)
             info
 
-            if [ -f "${WT_STATE_FILENAME}" ]
+            if [ -f "${WT_CACHE_FILENAME}" ]
             then
-                source "${WT_STATE_FILENAME}"
+                source "${WT_CACHE_FILENAME}"
             fi
             ;;
         down)
             info
 
-            declare -p _state \
+            declare -p _cache \
                 | sed "s, -A , -g -A ," \
-                > "${WT_STATE_FILENAME}"
+                > "${WT_CACHE_FILENAME}"
             ;;
         get)
             local name="${1}" && shift
             local key="${1}" && shift
 
-            echo "${_state["${name}-${key}"]}"
+            echo "${_cache["${name}-${key}"]}"
             ;;
         set)
             local name="${1}" && shift
             local key="${1}" && shift
             local value="${1}" && shift
 
-            _state["${name}-${key}"]="${value}"
+            _cache["${name}-${key}"]="${value}"
             ;;
     esac
 }
@@ -2607,7 +2607,7 @@ wt_optional_list=(
 
 wt_others_list=(
     bash_compat
-    state
+    cache
     utils
     udp
     wirething
