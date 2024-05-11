@@ -24,7 +24,7 @@ function bash_compat() {
     case "${action}" in
         deps)
             ;;
-        init)
+        _init)
             # changelog:    https://github.com/bminor/bash/blob/master/NEWS
             # bash changes: https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
 
@@ -52,58 +52,7 @@ function bash_compat() {
     esac
 }
 
-bash_compat init
-
-# state
-
-function state() {
-    local context="${1}" && shift
-
-    case "${context}" in
-        deps)
-            ;;
-        init)
-            declare -g -A _state
-
-            alias host="state host"
-            alias peer="state peer"
-            ;;
-        dump)
-            declare -p _state
-            ;;
-        host)
-            local action="${1}" && shift
-            local key="${1}" && shift
-
-            case "${action}" in
-                get)
-                    echo "${_state["${context}-${key}"]}"
-                    ;;
-                set)
-                    local value="${1}" && shift
-                    _state["${context}-${key}"]="${value}"
-                    ;;
-            esac
-            ;;
-        peer)
-            local peer_name="${1}" && shift
-            local action="${1}" && shift
-            local key="${1}" && shift
-
-            case "${action}" in
-                get)
-                    echo "${_state["${context}-${peer_name}-${key}"]}"
-                    ;;
-                set)
-                    local value="${1}" && shift
-                    _state["${context}-${peer_name}-${key}"]="${value}"
-                    ;;
-            esac
-            ;;
-    esac
-}
-
-state init
+bash_compat _init
 
 # utils
 
@@ -132,7 +81,7 @@ function utils() {
                     die "OS *${OSTYPE}* not supported"
             esac
             ;;
-        init)
+        _init)
             case "${OSTYPE}" in
                 darwin*)
                     alias ping="ping -c 1 -t 5"
@@ -148,7 +97,7 @@ function utils() {
     esac
 }
 
-utils init
+utils _init
 
 function to_upper() {
     echo ${1} | tr "[:lower:]" "[:upper:]"
@@ -391,7 +340,7 @@ function fs_store() {
     local action="${1}" && shift
 
     case "${action}" in
-        init)
+        _init)
             WT_STORE_VERSION="v1"
 
             if [ "$(id -u)" != 0 ]
@@ -687,9 +636,47 @@ store ""    || die "invalid WT_STORE_TYPE *${WT_STORE_TYPE}*, options: $(options
 
 if [ "${WT_STORE_ENABLED:-false}" == "true" ]
 then
-    store init
+    store _init
     store to_env "${WT_DOMAIN:?Variable not set}"
 fi
+
+# state
+
+function state() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            echo "sed"
+            ;;
+        init)
+            WT_STATE_FILENAME="_state"
+
+            declare -g -A _state
+            ;;
+        up)
+            source "${WT_CONFIG_PATH}/${WT_STATE_FILENAME}"
+            ;;
+        down)
+            declare -p _state \
+                | sed "s, -A , -g -A ," \
+                > "${WT_CONFIG_PATH}/${WT_STATE_FILENAME}"
+            ;;
+        get)
+            local name="${1}" && shift
+            local key="${1}" && shift
+
+            echo "${_state["${name}-${key}"]}"
+            ;;
+        set)
+            local name="${1}" && shift
+            local key="${1}" && shift
+            local value="${1}" && shift
+
+            _state["${name}-${key}"]="${value}"
+            ;;
+    esac
+}
 
 # wg interface
 
@@ -2799,7 +2786,7 @@ function cli() {
 
     case "${action}" in
         init)
-            store init
+            store _init
             ;;
         to_env|from_env)
             local domain="${1:?Missing domain param}" && shift
