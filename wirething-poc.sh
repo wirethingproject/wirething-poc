@@ -650,17 +650,26 @@ function state() {
             echo "sed"
             ;;
         init)
-            WT_STATE_FILENAME="_state"
+            info
+
+            WT_STATE_FILENAME="${WT_STATE_FILENAME:-${WT_STATE_PATH}/_state}"
 
             declare -g -A _state
             ;;
         up)
-            source "${WT_CONFIG_PATH}/${WT_STATE_FILENAME}"
+            info
+
+            if [ -f "${WT_STATE_FILENAME}" ]
+            then
+                source "${WT_STATE_FILENAME}"
+            fi
             ;;
         down)
+            info
+
             declare -p _state \
                 | sed "s, -A , -g -A ," \
-                > "${WT_CONFIG_PATH}/${WT_STATE_FILENAME}"
+                > "${WT_STATE_FILENAME}"
             ;;
         get)
             local name="${1}" && shift
@@ -1996,7 +2005,6 @@ function wirething() {
             ;;
         init)
             info
-            WT_STATE_PATH="${WT_CONFIG_PATH}/state"
             WT_HOST_PORT_FILE="${WT_STATE_PATH}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE_PATH}/host_endpoint"
             WT_PEER_ENDPOINT_PATH="${WT_STATE_PATH}/peer_endpoint"
@@ -2012,7 +2020,6 @@ function wirething() {
                 die "punch *${WT_PUNCH_TYPE}=${punch_protocol}* and interface *${WT_INTERFACE_TYPE}=${interface_protocol}* protocol differ"
             fi
 
-            mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
             mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
 
@@ -2674,6 +2681,7 @@ function wirething_main() {
             WT_PID="${PID}"
 
             WT_CONFIG_PATH="${WT_CONFIG_PATH:-${PWD}}"
+            WT_STATE_PATH="${WT_CONFIG_PATH}/state"
 
             if [ "$(id -u)" != 0 ]
             then
@@ -2725,6 +2733,7 @@ function wirething_main() {
 
             wirething_main trap
 
+            mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             wt_type_for_each up
