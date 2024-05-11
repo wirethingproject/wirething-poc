@@ -1241,9 +1241,11 @@ function wireproxy_interface() {
             } | {
                 while read line
                 do
-                    echo "${line}" | { grep "Received\|Receiving\|Sending" || true; } | raw_log wireproxy trace 27
+                    echo "${line}" | { grep "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+                        | raw_log wireproxy trace 27
 
-                    echo "${line}" | { grep -v "Received\|Receiving\|Sending" || true; } | {
+                    echo "${line}" | { grep -v "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+                        | {
                         case "${line}" in
                             "DEBUG: "*|"ERROR: "*)
                                 raw_log wireproxy from_line 27
