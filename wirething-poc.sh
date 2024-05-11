@@ -1094,7 +1094,7 @@ EOF
 function wireproxy_compat() {
     local major minor patch
 
-    IFS=. read major minor patch < <("${WIREPROXY_COMMAND}" --version | cut -f 3 -d " ")
+    IFS=. read major minor patch < <("${WIREPROXY_COMMAND}" --version | cut -f 3 -d " " | sed "s,^v,,")
 
     if [[ (${major} -gt ${1}) ||
           (${major} -eq ${1} && ${minor} -gt ${2}) ||
