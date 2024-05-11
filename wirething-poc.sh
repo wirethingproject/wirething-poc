@@ -2,20 +2,58 @@
 
 # basic
 
-# set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
-
-set -o errexit  # -e Exit immediately if any command returns a non-zero status
-set -o errtrace # -E Make ERR trap work with shell functions
-set -o nounset  # -u Treat unset variables as an error
-set -o pipefail # Return non-zero if any command in a pipeline fails
-
-shopt -s expand_aliases  # Aliases are expanded on non interactive shell
-shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
-shopt -s execfail        # Don't exit if exec cannot execute the file
-
 umask 077
 
 export LC_ALL=C
+
+# bash compat
+
+# Source:
+# - https://github.com/bminor/bash/blob/master/NEWS
+# - https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
+
+function is_bash_compat() {
+    if [[ (${BASH_VERSINFO[0]} -gt ${1}) ||
+          (${BASH_VERSINFO[0]} -eq ${1} && ${BASH_VERSINFO[1]} -ge ${2}) ]]
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
+function bash_compat() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            ;;
+        init)
+            if ! is_bash_compat 5 0
+            then
+                version="${BASH_VERSINFO[@]}"
+                echo "bash ${version// /.}"
+                echo "bash < 5.0 not supported"
+                exit 1
+            fi
+
+            # set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
+
+            set -o errexit  # -e Exit immediately if any command returns a non-zero status
+            set -o errtrace # -E Make ERR trap work with shell functions
+            set -o nounset  # -u Treat unset variables as an error
+            set -o pipefail # Return non-zero if any command in a pipeline fails
+
+            shopt -s expand_aliases  # Aliases are expanded on non interactive shell
+            shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
+            shopt -s execfail        # Don't exit if exec cannot execute the file
+
+            alias epoch='echo "${EPOCHSECONDS}"' # requires bash 5.0
+            ;;
+    esac
+}
+
+bash_compat init
 
 # utils
 
@@ -43,10 +81,6 @@ function utils() {
                 *)
                     die "OS *${OSTYPE}* not supported"
             esac
-            if bash_compat 5 0
-            then
-                echo "date"
-            fi
             ;;
         init)
             case "${OSTYPE}" in
@@ -82,27 +116,6 @@ function options() {
     set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
 }
 
-# bash compat
-
-function bash_compat() {
-    if [[ (${BASH_VERSINFO[0]} -gt ${1}) ||
-          (${BASH_VERSINFO[0]} -eq ${1} && ${BASH_VERSINFO[1]} -ge ${2}) ]]
-    then
-        return 0
-    else
-        return 1
-    fi
-}
-
-function epoch() {
-    if bash_compat 5 0
-    then
-        echo "${EPOCHSECONDS}"
-    else
-        date -u +"%s"
-    fi
-}
-
 function set_pid() {
     PID="${BASHPID:-${$}}"
 }
@@ -123,19 +136,11 @@ function capture() {
 }
 
 function log_dev() {
-    if bash_compat 4 1
-    then
-        exec {null}>>/dev/null
-        exec {err}>&2
-    else
-        exec 5>>/dev/null
-        exec 6>&2
-        null="5"
-        err="6"
-    fi
+    exec {null}>>/dev/null
+    exec {err}>&2
 }
 
-# bash compat udp
+# udp
 
 function udp() {
     local action="${1}" && shift
@@ -148,21 +153,10 @@ function udp() {
             host="${1}" && shift
             port="${1}" && shift
 
-            if bash_compat 4 1
-            then
-                exec {UDP_SOCKET}<>/dev/udp/${host}/${port}
-            else
-                UDP_SOCKET=100
-                exec 100<>/dev/udp/${host}/${port}
-            fi
+            exec {UDP_SOCKET}<>/dev/udp/${host}/${port}
             ;;
         close)
-            if bash_compat 4 1
-            then
-                exec {UDP_SOCKET}>&- || true
-            else
-                exec 100>&- || true
-            fi
+            exec {UDP_SOCKET}>&- || true
 
             unset UDP_SOCKET
             ;;
@@ -933,13 +927,6 @@ function wg_quick_interface() {
             ;;
         init)
             info
-
-            if bash_compat 4 1
-            then
-                :
-            else
-                die "bash < 4.1 not supported"
-            fi
 
             WGQ_HOST_PRIVATE_KEY_FILE="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
             WGQ_PEER_PUBLIC_KEY_FILE_LIST="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
@@ -2573,6 +2560,7 @@ wt_optional_list=(
 )
 
 wt_others_list=(
+    bash_compat
     utils
     udp
     wirething
