@@ -992,6 +992,10 @@ function wg_quick_interface() {
             WGQ_PEER_PUBLIC_KEY_FILE_LIST="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
             WGQ_HOST_ADDRESS="${WGQ_HOST_ADDRESS:?Variable not set}"
 
+            # WT_*
+            WGQ_HOSTNAME="${WT_HOSTNAME:-${WGQ_HOST_PRIVATE_KEY_FILE%.key}}"
+            # WT_*
+
             WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY="${WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY:-true}"
             WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-25}" # 25 seconds
 
@@ -1006,7 +1010,7 @@ function wg_quick_interface() {
             wg_quick_validate_peers
 
             local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
-            cache set "wg_quick-hostname" "${host_id}" "${WGQ_HOST_PRIVATE_KEY_FILE%.key}"
+            cache set "wg_quick-hostname" "${host_id}" "${WGQ_HOSTNAME}"
 
             for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
             do
