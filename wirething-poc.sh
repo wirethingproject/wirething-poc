@@ -484,6 +484,11 @@ EOF
                         | grep "^WT_PEER_HOSTNAME=" \
                         | sed 's,.*"\(.*\)",\1,'
                 )"
+                address="$(fs_store _get "${domain}" "peers/${peer_file}" \
+                        | grep "^WT_PEER_ADDRESS=" \
+                        | sed 's,.*"\(.*\)",\1,'
+                )"
+
                 source <({
 
                     fs_store _get "${domain}" "peers/${peer_file}" \
