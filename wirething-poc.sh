@@ -646,26 +646,23 @@ then
     store to_env "${WT_DOMAIN:?Variable not set}"
 fi
 
-# bash cache
+# json kv
 
-function bash_cache() {
+function json_kv() {
     local action="${1}" && shift
 
     case "${action}" in
         deps)
-            echo "sed"
+            echo "cat jq"
             ;;
         init)
             info
 
-            WT_CACHE_FILENAME="${WT_CACHE_FILENAME:-${WT_STATE_PATH}/_bash_cache}"
+            WT_KV_FILENAME="${WT_KV_FILENAME:-${WT_STATE_PATH}/kv.json}"
 
-            declare -g -A _cache
+            declare -g -A _kv
 
-            if [ -f "${WT_CACHE_FILENAME}" ]
-            then
-                source "${WT_CACHE_FILENAME}"
-            fi
+            json_kv load
             ;;
         up)
             info
@@ -673,29 +670,54 @@ function bash_cache() {
         down)
             info
 
-            declare -p _cache \
-                | sed "s, -A , -g -A ," \
-                > "${WT_CACHE_FILENAME}"
+            json_kv store
+            ;;
+        load)
+            info
+
+            if [ -f "${WT_KV_FILENAME}" ]
+            then
+                local key value
+                while read -r key value
+                do
+                    _kv["${key}"]="${value}"
+                done < <(cat "${WT_KV_FILENAME}" | jq -r 'to_entries[] | "\(.key) \(.value)"')
+            fi
+
+            ;;
+        store)
+            info
+
+            local json="{"
+
+            for key in "${!_kv[@]}"; do
+                json+="\n  \"${key}\":\"${_kv[${key}]}\","
+            done
+
+            json="${json%,}"
+            json+="\n}\n"
+
+            echo -ne "${json}" > "${WT_KV_FILENAME}"
             ;;
         get)
             local name="${1}" && shift
             local key="${1}" && shift
 
-            echo "${_cache["${name}-${key}"]}"
+            echo "${_kv["${name}-${key}"]}"
             ;;
         set)
             local name="${1}" && shift
             local key="${1}" && shift
             local value="${1}" && shift
 
-            _cache["${name}-${key}"]="${value}"
+            _kv["${name}-${key}"]="${value}"
             ;;
     esac
 }
 
-WT_CACHE_TYPE="${WT_CACHE_TYPE:-bash}"
-alias cache="${WT_CACHE_TYPE}_cache"
-cache ""        || die "invalid WT_CACHE_TYPE *${WT_CACHE_TYPE}*, options: $(options cache)"
+WT_KV_TYPE="${WT_KV_TYPE:-json}"
+alias kv="${WT_KV_TYPE}_kv"
+kv ""        || die "invalid WT_KV_TYPE *${WT_KV_TYPE}*, options: $(options kv)"
 
 # wg interface
 
@@ -1010,7 +1032,7 @@ function wg_quick_interface() {
             wg_quick_validate_peers
 
             local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
-            cache set "wg_quick-hostname" "${host_id}" "${WGQ_HOSTNAME}"
+            kv set "wg_quick-hostname" "${host_id}" "${WGQ_HOSTNAME}"
 
             for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
             do
@@ -1024,7 +1046,7 @@ function wg_quick_interface() {
                 local peer_name="${peer_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
-                cache set "wg_quick-hostname" "${peer_id}" "${peer_name}"
+                kv set "wg_quick-hostname" "${peer_id}" "${peer_name}"
             done
             ;;
         up)
@@ -1113,7 +1135,7 @@ function wg_quick_interface() {
                     ;;
                 hostname)
                     id="${1}" && shift
-                    cache get "wg_quick-hostname" "${id}"
+                    kv get "wg_quick-hostname" "${id}"
                     ;;
                 *)
                     wg_interface "${action}" "${name}" ${@}
@@ -2641,7 +2663,7 @@ function peer_status_usecase() {
 # wirething main
 
 wt_type_list=(
-    cache
+    kv
     interface
     punch
     pubsub
