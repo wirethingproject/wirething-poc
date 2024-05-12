@@ -661,14 +661,14 @@ function bash_cache() {
             WT_CACHE_FILENAME="${WT_CACHE_FILENAME:-${WT_STATE_PATH}/_bash_cache}"
 
             declare -g -A _cache
-            ;;
-        up)
-            info
 
             if [ -f "${WT_CACHE_FILENAME}" ]
             then
                 source "${WT_CACHE_FILENAME}"
             fi
+            ;;
+        up)
+            info
             ;;
         down)
             info
