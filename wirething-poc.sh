@@ -703,14 +703,14 @@ function json_kv() {
             local name="${1}" && shift
             local key="${1}" && shift
 
-            echo "${_kv["${name}-${key}"]}"
+            echo "${_kv["${name}_${key}"]}"
             ;;
         set)
             local name="${1}" && shift
             local key="${1}" && shift
             local value="${1}" && shift
 
-            _kv["${name}-${key}"]="${value}"
+            _kv["${name}_${key}"]="${value}"
             ;;
     esac
 }
@@ -1032,7 +1032,7 @@ function wg_quick_interface() {
             wg_quick_validate_peers
 
             local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
-            kv set "wg_quick-hostname" "${host_id}" "${WGQ_HOSTNAME}"
+            kv set "wg_quick_hostname" "${host_id}" "${WGQ_HOSTNAME}"
 
             for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
             do
@@ -1046,7 +1046,7 @@ function wg_quick_interface() {
                 local peer_name="${peer_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
-                kv set "wg_quick-hostname" "${peer_id}" "${peer_name}"
+                kv set "wg_quick_hostname" "${peer_id}" "${peer_name}"
             done
             ;;
         up)
@@ -1135,7 +1135,7 @@ function wg_quick_interface() {
                     ;;
                 hostname)
                     id="${1}" && shift
-                    kv get "wg_quick-hostname" "${id}"
+                    kv get "wg_quick_hostname" "${id}"
                     ;;
                 *)
                     wg_interface "${action}" "${name}" ${@}
