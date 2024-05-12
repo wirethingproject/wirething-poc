@@ -634,7 +634,6 @@ WT_STORE_TYPE="${WT_STORE_TYPE:-fs}"
 alias store="${WT_STORE_TYPE}_store"
 store ""    || die "invalid WT_STORE_TYPE *${WT_STORE_TYPE}*, options: $(options store)"
 
-
 if [ "${WT_STORE_ENABLED:-false}" == "true" ]
 then
     store _init
@@ -687,6 +686,10 @@ function bash_cache() {
             ;;
     esac
 }
+
+WT_CACHE_TYPE="${WT_CACHE_TYPE:-bash}"
+alias cache="${WT_CACHE_TYPE}_cache"
+cache ""        || die "invalid WT_CACHE_TYPE *${WT_CACHE_TYPE}*, options: $(options cache)"
 
 # wg interface
 
@@ -757,6 +760,10 @@ function wg_interface() {
                             echo "${peer_id}"
                         done
                     }
+                    ;;
+                hostname)
+                    id="${1}" && shift
+                    echo "${id}"
                     ;;
                 peer_address)
                     peer="${1}" && shift
@@ -991,6 +998,24 @@ function wg_quick_interface() {
             info "WGQ_INTERFACE=${WGQ_INTERFACE}"
 
             wg_quick_validate_peers
+
+            local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
+            cache set "wg_quick-hostname" "${host_id}" "${WGQ_HOST_PRIVATE_KEY_FILE%.key}"
+
+            for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+            do
+                local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
+
+                if [ "${peer_id}" == "${host_id}" ]
+                then
+                    continue
+                fi
+
+                local peer_name="${peer_pub_file##*/}" # remove path
+                peer_name="${peer_name%.pub}" # remove extension
+
+                cache set "wg_quick-hostname" "${peer_id}" "${peer_name}"
+            done
             ;;
         up)
             info
@@ -1075,6 +1100,10 @@ function wg_quick_interface() {
                             }
                         done
                     }
+                    ;;
+                hostname)
+                    id="${1}" && shift
+                    cache get "wg_quick-hostname" "${id}"
                     ;;
                 *)
                     wg_interface "${action}" "${name}" ${@}
@@ -1452,6 +1481,9 @@ function wireproxy_interface() {
                     wg_quick_interface "${action}" "${name}" ${@}
                     ;;
                 peer_id_list)
+                    wg_quick_interface "${action}" "${name}" ${@}
+                    ;;
+                hostname)
                     wg_quick_interface "${action}" "${name}" ${@}
                     ;;
             esac
@@ -1977,21 +2009,18 @@ function totp_topic() {
 
 # wirething hacks
 
-WT_CACHE_TYPE="${WT_CACHE_TYPE:-bash}"
 WT_INTERFACE_TYPE="${WT_INTERFACE_TYPE:-wireproxy}"
 WT_PUNCH_TYPE="${WT_PUNCH_TYPE:-stun}"
 WT_PUBSUB_TYPE="${WT_PUBSUB_TYPE:-ntfy}"
 WT_ENCRYPTION_TYPE="${WT_ENCRYPTION_TYPE:-gpg_ephemeral}"
 WT_TOPIC_TYPE="${WT_TOPIC_TYPE:-totp}"
 
-alias cache="${WT_CACHE_TYPE}_cache"
 alias interface="${WT_INTERFACE_TYPE}_interface"
 alias punch="${WT_PUNCH_TYPE}_punch"
 alias pubsub="${WT_PUBSUB_TYPE}_pubsub"
 alias encryption="${WT_ENCRYPTION_TYPE}_encryption"
 alias topic="${WT_TOPIC_TYPE}_topic"
 
-cache ""        || die "invalid WT_CACHE_TYPE *${WT_CACHE_TYPE}*, options: $(options cache)"
 interface ""    || die "invalid WT_INTERFACE_TYPE *${WT_INTERFACE_TYPE}*, options: $(options interface)"
 punch ""        || die "invalid WT_PUNCH_TYPE *${WT_PUNCH_TYPE}*, options: $(options punch)"
 pubsub ""       || die "invalid WT_PUBSUB_TYPE *${WT_PUBSUB_TYPE}*, options: $(options pubsub)"
@@ -2385,6 +2414,8 @@ function host_status_usecase() {
         start)
             local host_id="${1}" && shift
             local log_id="${host_id}"
+            local log_hostname="$(interface get hostname "${host_id}")"
+
             info "$(short "${host_id}")"
 
             if [[ "${WT_HOST_OFFLINE_ENABLED}" == "true" ]]
@@ -2519,6 +2550,8 @@ function peer_status_usecase() {
             local host_id="${1}" && shift
             local peer_id="${1}" && shift
             local log_id="${peer_id}"
+            local log_hostname="$(interface get hostname "${peer_id}")"
+
             info "$(short "${peer_id}")"
 
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
