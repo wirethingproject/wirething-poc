@@ -196,8 +196,8 @@ function log_init() {
     WT_LOG_TIME="${WT_LOG_TIME:-$(log_default_time)}"
     WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
 
-    log_id="---------"
-    log_hostname="---------"
+    log_id=""
+    log_hostname=""
 
     log_dev
 
@@ -303,7 +303,7 @@ function raw_log() {
 }
 
 function log_set_prefix() {
-    prefix="[$(short4 "${log_hostname}")-$(short4 "${log_id}")] ${FUNCNAME[2]:-} ${action:-}"
+    prefix="[$(short4 "${log_hostname}----")-$(short4 "${log_id}----")] ${FUNCNAME[2]:-} ${action:-}"
 }
 
 function debug() {
