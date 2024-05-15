@@ -2624,7 +2624,6 @@ function peer_status_usecase() {
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
-            WT_PEER_OFFLINE_INTERVAL="${WT_PEER_OFFLINE_INTERVAL:-30}" # 30 seconds
             ;;
         start)
             local host_id="${1}" && shift
@@ -2643,66 +2642,111 @@ function peer_status_usecase() {
                 info "disabled"
             fi
             ;;
-        online)
-            info
-            while [ "$(interface get peer_status "${peer_id}")" == "online" ]
-            do
-                debug "pause: ${WT_PEER_OFFLINE_INTERVAL} seconds"
-                sleep "${WT_PEER_OFFLINE_INTERVAL}"
-            done
+        fetch_peer_endpoint)
+            wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}s" || true
             ;;
-        offline)
+        ensure_host_endpoint_is_published)
+            wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" || true
+            ;;
+        transition_start)
             info
+            declare -g -A event_transitions=(
+                ["peer-start-start"]="on_peer_start"
+                ["peer-stop-stop"]="on_peer_stop"
 
-            local since="all"
-            local next_ensure="0"
+                ["peer-wait-offline"]="on_peer_offline"
 
-            while [ "$(interface get peer_status "${peer_id}")" == "offline" ]
-            do
-                if [[ $(epoch) -gt ${next_ensure} ]]
-                then
-                    if wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}"
-                    then
-                        next_ensure="$(($(epoch) + "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"))"
-                        info "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
-                    else
-                        info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                        sleep "${WT_PAUSE_AFTER_ERROR}"
-                        continue
-                    fi
-                fi
+                ["peer-online-offline"]="on_peer_offline"
+                ["peer-offline-online"]="on_peer_online"
+            )
 
-                if ! wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${since}"
-                then
-                    info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                    sleep "${WT_PAUSE_AFTER_ERROR}"
-                    continue
-                fi
+            declare -g -A status_transitions=(
+                ["peer-start-start"]="wait"
+                ["peer-stop-stop"]="stop"
 
-                debug "pause after fetch_peer_endpoint: ${WT_PEER_OFFLINE_FETCH_INTERVAL} seconds"
-                sleep "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+                ["peer-wait-offline"]="offline"
+                ["peer-wait-online"]="online"
 
-                since="${WT_PEER_OFFLINE_FETCH_SINCE}s"
-            done
+                ["peer-online-offline"]="offline"
+                ["peer-offline-online"]="online"
+            )
+
+            interface_peer_status="start"
+            current_peer_status="start"
+
+            peer_status_usecase transition
+            ;;
+        transition_stop)
+            info
+            interface_peer_status="stop"
+            current_peer_status="stop"
+
+            peer_status_usecase transition
+            ;;
+        transition_get_interface_peer_status)
+            local status="$(interface get peer_status "${peer_id}")"
+            debug "${status}"
+            interface_peer_status="${status}"
+            ;;
+        transition)
+            local transition="peer-${current_peer_status}-${interface_peer_status}"
+
+            local new_event="${event_transitions["${transition}"]:-}"
+
+            case "${new_event}" in
+                on_peer_start)
+                    info "${new_event}"
+
+                    tasks register "peer_status_usecase transition_get_interface_peer_status ${peer_name}" \
+                        "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+                    ;;
+                on_peer_stop)
+                    info "${new_event}"
+
+                    tasks unregister "peer_status_usecase transition_get_interface_peer_status ${peer_name}"
+                    ;;
+                on_peer_offline)
+                    info "${new_event}"
+
+                    wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all" || true
+
+                    tasks register "peer_status_usecase fetch_peer_endpoint ${peer_name}" \
+                        "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+                    tasks register "peer_status_usecase ensure_host_endpoint_is_published ${peer_name}" \
+                        "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"
+                    ;;
+                on_peer_online)
+                    info "${new_event}"
+
+                    tasks unregister "peer_status_usecase fetch_peer_endpoint ${peer_name}"
+                    tasks unregister "peer_status_usecase ensure_host_endpoint_is_published ${peer_name}"
+                    ;;
+            esac
+
+            local new_status="${status_transitions["${transition}"]:-}"
+
+            case "${new_status}" in
+                wait|stop|offline|online)
+                    info "new status: ${new_status}"
+                    current_peer_status="${new_status}"
+                    ;;
+            esac
             ;;
         loop)
             info "pause before start: ${WT_PEER_OFFLINE_START_DELAY} seconds"
             sleep "${WT_PEER_OFFLINE_START_DELAY}"
 
+            tasks init
+            peer_status_usecase transition_start
+
             while true
             do
-                case "$(interface get peer_status "${peer_id}")" in
-                    online)
-                        peer_status_usecase online
-                        ;;
-                    offline)
-                        peer_status_usecase offline
-                        ;;
-                    *)
-                        error "invalid peer status"
-                esac
-
+                peer_status_usecase transition
+                tasks run
+                sleep 5
             done
+
+            peer_status_usecase transition_stop
 
             info "end"
             ;;
