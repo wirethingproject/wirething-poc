@@ -1490,8 +1490,6 @@ function wireproxy_interface() {
 
                         keepalive_delta="$(($(epoch) - ${last_keepalive}))"
 
-                        debug "peer_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
-
                         if [[ ${keepalive_delta} -lt ${WIREPROXY_PEER_STATUS_TIMEOUT} ]]
                         then
                             result="online"
@@ -1499,7 +1497,8 @@ function wireproxy_interface() {
                             result="offline"
                         fi
 
-                        debug "peer_status $(short "${peer}") ${result}"
+                        debug "peer_status ${result} last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
+
                         echo "${result}"
                     }
                     ;;
