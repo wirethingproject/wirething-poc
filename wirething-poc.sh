@@ -197,7 +197,7 @@ function log_init() {
     WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
 
     log_id=""
-    log_hostname=""
+    log_name=""
 
     log_dev
 
@@ -303,7 +303,7 @@ function raw_log() {
 }
 
 function log_set_prefix() {
-    prefix="[$(short4 "${log_hostname}----")-$(short4 "${log_id}----")] ${FUNCNAME[2]:-} ${action:-}"
+    prefix="[$(short4 "${log_name}----")-$(short4 "${log_id}----")] ${FUNCNAME[2]:-} ${action:-}"
 }
 
 function debug() {
@@ -2446,7 +2446,7 @@ function host_status_usecase() {
         start)
             local host_id="${1}" && shift
             local log_id="${host_id}"
-            local log_hostname="$(interface get hostname "${host_id}")"
+            local log_name="$(interface get hostname "${host_id}")"
 
             info "$(short "${host_id}")"
 
@@ -2581,10 +2581,11 @@ function peer_status_usecase() {
         start)
             local host_id="${1}" && shift
             local peer_id="${1}" && shift
+            local peer_name="$(interface get hostname "${peer_id}")"
             local log_id="${peer_id}"
-            local log_hostname="$(interface get hostname "${peer_id}")"
+            local log_name="${peer_name}"
 
-            info "$(short "${peer_id}")"
+            info "${peer_name}"
 
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
