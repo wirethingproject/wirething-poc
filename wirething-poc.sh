@@ -719,6 +719,53 @@ WT_KV_TYPE="${WT_KV_TYPE:-json}"
 alias kv="${WT_KV_TYPE}_kv"
 kv ""        || die "invalid WT_KV_TYPE *${WT_KV_TYPE}*, options: $(options kv)"
 
+# tasks
+
+function tasks() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            ;;
+        init)
+            info
+
+            declare -g -A _tasks
+            ;;
+        register)
+            local task="${1}" && shift
+            local frequency="${1}" && shift # seconds
+            local next="$(epoch)"
+
+            _tasks["${task}"]="${frequency} ${next}"
+
+            debug "${_tasks["${task}"]} ${task}"
+            ;;
+        unregister)
+            local task="${1}" && shift
+            debug "${_tasks["${task}"]} ${task}"
+
+            unset _tasks["${task}"]
+            ;;
+        run)
+            local now=$(epoch)
+            local frequency
+            local next
+
+            for task in "${!_tasks[@]}"
+            do
+                read frequency next <<<"${_tasks[${task}]}"
+
+                if [[ "${now}" -ge "${next}" ]]
+                then
+                    _tasks["${task}"]="${frequency} $((${now} + ${frequency}))"
+                    ${task} || true
+                fi
+            done
+            ;;
+    esac
+}
+
 # wg interface
 
 function wg_interface() {
