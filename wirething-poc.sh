@@ -1979,7 +1979,8 @@ function gpg_ephemeral_encryption() {
 
                 gpg --decrypt ${GPG_OPTIONS} \
                     --local-user "${id}@${GPG_DOMAIN_NAME}" \
-                    2>&${capture[1]}
+                    2>&${capture[1]} \
+                    || error "gpg returns ${?}"
 
                 capture stop
 
@@ -1991,6 +1992,7 @@ function gpg_ephemeral_encryption() {
                     return 0
                 else
                     (IFS=''; echo -en "${gpg_buffer[*]}";) | raw_log gpg error 5
+                    error "gpg 'Good signature' not found"
                     return 1
                 fi
             }
