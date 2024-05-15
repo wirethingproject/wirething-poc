@@ -759,7 +759,7 @@ function tasks() {
                 if [[ "${now}" -ge "${next}" ]]
                 then
                     _tasks["${task}"]="${frequency} $((${now} + ${frequency}))"
-                    ${task} || true
+                    ${task} || error "task '${task}' returns ${?}"
                 fi
             done
             ;;
