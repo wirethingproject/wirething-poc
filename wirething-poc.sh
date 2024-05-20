@@ -2755,9 +2755,8 @@ function peer() {
         transition)
             local peer_name="${1}" && shift
 
-            local current_status="$(peer get "${peer_name}" "current-status")"
-            local polled_status="$(peer get "${peer_name}" "polled-status")"
-
+            local current_status="${_peer["current-status-${peer_name}"]}"
+            local polled_status="${_peer["polled-status-${peer_name}"]}"
             local transition="peer-${current_status}-${polled_status}"
 
             local new_event="${_event_transitions["${transition}"]}"
