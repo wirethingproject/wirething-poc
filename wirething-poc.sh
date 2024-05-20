@@ -2628,9 +2628,9 @@ function host_status_usecase() {
     esac
 }
 
-# peer status usecase
+# peer
 
-function peer_status_usecase() {
+function peer() {
     local action="${1}" && shift
 
     case "${action}" in
@@ -2659,7 +2659,7 @@ function peer_status_usecase() {
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
                 info "enabled"
-                peer_status_usecase loop "${peer_name}" &
+                peer loop "${peer_name}" &
             else
                 info "disabled"
             fi
@@ -2717,7 +2717,7 @@ function peer_status_usecase() {
             _peer["current-status-${peer_name}"]="start"
             _peer["polled-status-${peer_name}"]="start"
 
-            peer_status_usecase transition "${peer_name}"
+            peer transition "${peer_name}"
 
             _peer["current-status-${peer_name}"]="wait"
             _peer["polled-status-${peer_name}"]="wait"
@@ -2729,11 +2729,11 @@ function peer_status_usecase() {
             _peer["current-status-${peer_name}"]="stop"
             _peer["polled-status-${peer_name}"]="stop"
 
-            peer_status_usecase transition "${peer_name}"
+            peer transition "${peer_name}"
             ;;
         transition_poll_status)
             local peer_name="${1}" && shift
-            local status="$(peer_status_usecase interface_get_peer_status "${peer_name}")"
+            local status="$(peer interface_get_peer_status "${peer_name}")"
 
             debug "${peer_name} ${status}"
 
@@ -2756,7 +2756,7 @@ function peer_status_usecase() {
                     tasks register name "peer-poll-status-${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
                         start "+${WT_PEER_OFFLINE_START_DELAY}" stop never \
-                        task "peer_status_usecase transition_poll_status ${peer_name}"
+                        task "peer transition_poll_status ${peer_name}"
                     ;;
                 on_peer_stop)
                     info "${new_event}"
@@ -2766,15 +2766,15 @@ function peer_status_usecase() {
                 on_peer_offline)
                     info "${new_event}"
 
-                    peer_status_usecase fetch_peer_endpoint_since_all "${peer_name}"
+                    peer fetch_peer_endpoint_since_all "${peer_name}"
 
                     tasks register name "peer-poll-endpoint-${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" start now stop never \
-                        task "peer_status_usecase fetch_peer_endpoint ${peer_name}"
+                        task "peer fetch_peer_endpoint ${peer_name}"
 
                     tasks register name "peer-ensure-host-endpoint-${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_ENSURE_INTERVAL}" start now stop never \
-                        task "peer_status_usecase ensure_host_endpoint_is_published ${peer_name}"
+                        task "peer ensure_host_endpoint_is_published ${peer_name}"
                     ;;
                 on_peer_online)
                     info "${new_event}"
@@ -2798,17 +2798,17 @@ function peer_status_usecase() {
             info "start ${peer_name}"
 
             tasks init
-            peer_status_usecase transition_init
-            peer_status_usecase transition_start "${peer_name}"
+            peer transition_init
+            peer transition_start "${peer_name}"
 
             while true
             do
-                peer_status_usecase transition "${peer_name}"
+                peer transition "${peer_name}"
                 tasks run
                 sleep 5
             done
 
-            peer_status_usecase transition_stop "${peer_name}"
+            peer transition_stop "${peer_name}"
 
             info "end ${peer_name}"
             ;;
@@ -2838,7 +2838,7 @@ wt_others_list=(
     udp
     wirething
     host_status_usecase
-    peer_status_usecase
+    peer
 )
 
 function wt_get_alias() {
@@ -2997,7 +2997,7 @@ function wirething_main() {
 
             for _peer_id in ${peer_id_list}
             do
-                peer_status_usecase start "${_host_id}" "${_peer_id}"
+                peer start "${_host_id}" "${_peer_id}"
             done
             ;;
         wait)
