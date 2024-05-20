@@ -2664,6 +2664,19 @@ function peer() {
                 info "disabled"
             fi
             ;;
+        get)
+            local peer_name="${1}" && shift
+            local key="${1}" && shift
+
+            echo -n "${_peer["${key}-${peer_name}"]}"
+            ;;
+        set)
+            local peer_name="${1}" && shift
+            local key="${1}" && shift
+            local value="${1}" && shift
+
+            _peer["${key}-${peer_name}"]="${value}"
+            ;;
         interface_get_peer_status)
             local peer_name="${1}" && shift
             interface get peer_status "${peer_id}"
@@ -2682,6 +2695,14 @@ function peer() {
             local peer_name="${1}" && shift
             info "${peer_name}"
             wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" || true
+            ;;
+        poll_status)
+            local peer_name="${1}" && shift
+            local status="$(peer interface_get_peer_status "${peer_name}")"
+
+            debug "${peer_name} ${status}"
+
+            peer set "${peer_name}" "polled-status" "${status}"
             ;;
         transition_init)
             info
@@ -2714,36 +2735,28 @@ function peer() {
             local peer_name="${1}" && shift
             info "${peer_name}"
 
-            _peer["current-status-${peer_name}"]="start"
-            _peer["polled-status-${peer_name}"]="start"
+            peer set "${peer_name}" "current-status" "start"
+            peer set "${peer_name}" "polled-status" "start"
 
             peer transition "${peer_name}"
 
-            _peer["current-status-${peer_name}"]="wait"
-            _peer["polled-status-${peer_name}"]="wait"
+            peer set "${peer_name}" "current-status" "wait"
+            peer set "${peer_name}" "polled-status" "wait"
             ;;
         transition_stop)
             local peer_name="${1}" && shift
             info "${peer_name}"
 
-            _peer["current-status-${peer_name}"]="stop"
-            _peer["polled-status-${peer_name}"]="stop"
+            peer set "${peer_name}" "current-status" "stop"
+            peer set "${peer_name}" "polled-status" "stop"
 
             peer transition "${peer_name}"
-            ;;
-        transition_poll_status)
-            local peer_name="${1}" && shift
-            local status="$(peer interface_get_peer_status "${peer_name}")"
-
-            debug "${peer_name} ${status}"
-
-            _peer["polled-status-${peer_name}"]="${status}"
             ;;
         transition)
             local peer_name="${1}" && shift
 
-            local current_status="${_peer["current-status-${peer_name}"]}"
-            local polled_status="${_peer["polled-status-${peer_name}"]}"
+            local current_status="$(peer get "${peer_name}" "current-status")"
+            local polled_status="$(peer get "${peer_name}" "polled-status")"
 
             local transition="peer-${current_status}-${polled_status}"
 
@@ -2756,7 +2769,7 @@ function peer() {
                     tasks register name "peer-poll-status-${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
                         start "+${WT_PEER_OFFLINE_START_DELAY}" stop never \
-                        task "peer transition_poll_status ${peer_name}"
+                        task "peer poll_status ${peer_name}"
                     ;;
                 on_peer_stop)
                     info "${new_event}"
@@ -2788,8 +2801,8 @@ function peer() {
 
             case "${new_status}" in
                 wait|stop|offline|online)
-                    info "${peer_name} status from ${_peer["current-status-${peer_name}"]} to ${new_status}"
-                    _peer["current-status-${peer_name}"]="${new_status}"
+                    info "${peer_name} status from ${current_status} to ${new_status}"
+                    peer set "${peer_name}" "current-status" "${new_status}"
                     ;;
             esac
             ;;
