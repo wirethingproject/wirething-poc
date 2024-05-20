@@ -765,7 +765,7 @@ function tasks() {
             unset _tasks_next["${name}"]
             ;;
         run)
-            local frequency start stop task next now
+            local name frequency start stop task next now
 
             for name in "${!_tasks[@]}"
             do
