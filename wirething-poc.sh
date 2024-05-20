@@ -731,34 +731,54 @@ function tasks() {
             info
 
             declare -g -A _tasks
+            declare -g -A _tasks_next
             ;;
         register)
+            shift # name
+            local name="${1}" && shift
+            shift # frequency
+            local frequency="${1}" && shift
+            shift # now or +start
+            local plus_start="${1}" && shift
+            shift # never or +stop
+            local plus_stop="${1}" && shift
+            shift # task
             local task="${1}" && shift
-            local frequency="${1}" && shift # seconds
-            local next="$(epoch)"
 
-            _tasks["${task}"]="${frequency} ${next}"
+            local now="$(epoch)"
+            local max_now="(1<<63)-1"
+            local start="$((${now} ${plus_start/now/+0}))"
+            local stop="$((${now} ${plus_stop/never/+${max_now}-${now}}))"
 
-            debug "${_tasks["${task}"]} ${task}"
+            _tasks["${name}"]="${frequency} ${start} ${stop} ${task}"
+            _tasks_next["${name}"]="${start}"
+
+            debug "name=${name} now=${now} next=${_tasks_next["${name}"]} f/s/s/t=${_tasks["${name}"]}"
             ;;
         unregister)
-            local task="${1}" && shift
-            debug "${_tasks["${task}"]} ${task}"
+            shift # name
+            local name="${1}" && shift
+
+            debug "name=${name} now=${epoch} next=${_tasks_next["${name}"]} f/s/s/t=${_tasks["${name}"]}"
 
             unset _tasks["${task}"]
+            unset _tasks_next["${task}"]
             ;;
         run)
-            local now=$(epoch)
-            local frequency
-            local next
+            local frequency start stop task next now
 
-            for task in "${!_tasks[@]}"
+            for name in "${!_tasks[@]}"
             do
-                read frequency next <<<"${_tasks[${task}]}"
+                read frequency start stop task <<<"${_tasks[${name}]}"
+                read next <<<"${_tasks_next[${name}]}"
+                read now <<<"$(epoch)"
 
-                if [[ "${now}" -ge "${next}" ]]
+                if [[ ${now} -ge ${start} && ${now} -ge ${next} && ${now} -lt ${stop} ]]
                 then
-                    _tasks["${task}"]="${frequency} $((${now} + ${frequency}))"
+                    debug "name=${name} frequency=${frequency} start=${start} stop=${stop} next=${next} now=${now}"
+                    # debug "name=${name} task='${task}'"
+
+                    _tasks_next["${name}"]="$((${now} + ${frequency}))"
                     ${task} || error "task '${task}' returns ${?}"
                 fi
             done
@@ -2624,6 +2644,8 @@ function peer_status_usecase() {
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
+
+            declare -g -A _peer
             ;;
         start)
             local host_id="${1}" && shift
@@ -2637,118 +2659,158 @@ function peer_status_usecase() {
             if [[ "${WT_PEER_OFFLINE_ENABLED}" == "true" ]]
             then
                 info "enabled"
-                peer_status_usecase loop &
+                peer_status_usecase loop "${peer_name}" &
             else
                 info "disabled"
             fi
             ;;
+        interface_get_peer_status)
+            local peer_name="${1}" && shift
+            interface get peer_status "${peer_id}"
+            ;;
+        fetch_peer_endpoint_since_all)
+            local peer_name="${1}" && shift
+            info "${peer_name}"
+            wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all" || true
+            ;;
         fetch_peer_endpoint)
+            local peer_name="${1}" && shift
+            info "${peer_name}"
             wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}s" || true
             ;;
         ensure_host_endpoint_is_published)
+            local peer_name="${1}" && shift
+            info "${peer_name}"
             wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" || true
             ;;
-        transition_start)
+        transition_init)
             info
-            declare -g -A event_transitions=(
+
+            declare -g -A _event_transitions=(
                 ["peer-start-start"]="on_peer_start"
-                ["peer-stop-stop"]="on_peer_stop"
-
+                ["peer-wait-wait"]=""
                 ["peer-wait-offline"]="on_peer_offline"
-
+                ["peer-wait-online"]=""
+                ["peer-online-online"]=""
                 ["peer-online-offline"]="on_peer_offline"
+                ["peer-offline-offline"]=""
                 ["peer-offline-online"]="on_peer_online"
+                ["peer-stop-stop"]="on_peer_stop"
             )
 
-            declare -g -A status_transitions=(
-                ["peer-start-start"]="wait"
-                ["peer-stop-stop"]="stop"
-
+            declare -g -A _status_transitions=(
+                ["peer-start-start"]=""
+                ["peer-wait-wait"]=""
                 ["peer-wait-offline"]="offline"
                 ["peer-wait-online"]="online"
-
+                ["peer-online-online"]=""
                 ["peer-online-offline"]="offline"
+                ["peer-offline-offline"]=""
                 ["peer-offline-online"]="online"
+                ["peer-stop-stop"]=""
             )
+            ;;
+        transition_start)
+            local peer_name="${1}" && shift
+            info "${peer_name}"
 
-            interface_peer_status="start"
-            current_peer_status="start"
+            _peer["current-status-${peer_name}"]="start"
+            _peer["polled-status-${peer_name}"]="start"
 
-            peer_status_usecase transition
+            peer_status_usecase transition "${peer_name}"
+
+            _peer["current-status-${peer_name}"]="wait"
+            _peer["polled-status-${peer_name}"]="wait"
             ;;
         transition_stop)
-            info
-            interface_peer_status="stop"
-            current_peer_status="stop"
+            local peer_name="${1}" && shift
+            info "${peer_name}"
 
-            peer_status_usecase transition
+            _peer["current-status-${peer_name}"]="stop"
+            _peer["polled-status-${peer_name}"]="stop"
+
+            peer_status_usecase transition "${peer_name}"
             ;;
-        transition_get_interface_peer_status)
-            local status="$(interface get peer_status "${peer_id}")"
-            debug "${status}"
-            interface_peer_status="${status}"
+        transition_poll_status)
+            local peer_name="${1}" && shift
+            local status="$(peer_status_usecase interface_get_peer_status "${peer_name}")"
+
+            debug "${peer_name} ${status}"
+
+            _peer["polled-status-${peer_name}"]="${status}"
             ;;
         transition)
-            local transition="peer-${current_peer_status}-${interface_peer_status}"
+            local peer_name="${1}" && shift
 
-            local new_event="${event_transitions["${transition}"]:-}"
+            local current_status="${_peer["current-status-${peer_name}"]}"
+            local polled_status="${_peer["polled-status-${peer_name}"]}"
+
+            local transition="peer-${current_status}-${polled_status}"
+
+            local new_event="${_event_transitions["${transition}"]}"
 
             case "${new_event}" in
                 on_peer_start)
                     info "${new_event}"
 
-                    tasks register "peer_status_usecase transition_get_interface_peer_status ${peer_name}" \
-                        "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
+                    tasks register name "peer-poll-status-${peer_name}" \
+                        frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
+                        start "+${WT_PEER_OFFLINE_START_DELAY}" stop never \
+                        task "peer_status_usecase transition_poll_status ${peer_name}"
                     ;;
                 on_peer_stop)
                     info "${new_event}"
 
-                    tasks unregister "peer_status_usecase transition_get_interface_peer_status ${peer_name}"
+                    tasks unregister name "peer-poll-status-${peer_name}"
                     ;;
                 on_peer_offline)
                     info "${new_event}"
 
-                    wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all" || true
+                    peer_status_usecase fetch_peer_endpoint_since_all "${peer_name}"
 
-                    tasks register "peer_status_usecase fetch_peer_endpoint ${peer_name}" \
-                        "${WT_PEER_OFFLINE_FETCH_INTERVAL}"
-                    tasks register "peer_status_usecase ensure_host_endpoint_is_published ${peer_name}" \
-                        "${WT_PEER_OFFLINE_ENSURE_INTERVAL}"
+                    tasks register name "peer-poll-endpoint-${peer_name}" \
+                        frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" start now stop never \
+                        task "peer_status_usecase fetch_peer_endpoint ${peer_name}"
+
+                    tasks register name "peer-ensure-host-endpoint-${peer_name}" \
+                        frequency "${WT_PEER_OFFLINE_ENSURE_INTERVAL}" start now stop never \
+                        task "peer_status_usecase ensure_host_endpoint_is_published ${peer_name}"
                     ;;
                 on_peer_online)
                     info "${new_event}"
 
-                    tasks unregister "peer_status_usecase fetch_peer_endpoint ${peer_name}"
-                    tasks unregister "peer_status_usecase ensure_host_endpoint_is_published ${peer_name}"
+                    tasks unregister name "peer-poll-endpoint-${peer_name}"
+                    tasks unregister name "peer-ensure-host-endpoint-${peer_name}"
                     ;;
             esac
 
-            local new_status="${status_transitions["${transition}"]:-}"
+            local new_status="${_status_transitions["${transition}"]}"
 
             case "${new_status}" in
                 wait|stop|offline|online)
-                    info "new status: ${new_status}"
-                    current_peer_status="${new_status}"
+                    info "${peer_name} status from ${_peer["current-status-${peer_name}"]} to ${new_status}"
+                    _peer["current-status-${peer_name}"]="${new_status}"
                     ;;
             esac
             ;;
         loop)
-            info "pause before start: ${WT_PEER_OFFLINE_START_DELAY} seconds"
-            sleep "${WT_PEER_OFFLINE_START_DELAY}"
+            local peer_name="${1}" && shift
+            info "start ${peer_name}"
 
             tasks init
-            peer_status_usecase transition_start
+            peer_status_usecase transition_init
+            peer_status_usecase transition_start "${peer_name}"
 
             while true
             do
-                peer_status_usecase transition
+                peer_status_usecase transition "${peer_name}"
                 tasks run
                 sleep 5
             done
 
-            peer_status_usecase transition_stop
+            peer_status_usecase transition_stop "${peer_name}"
 
-            info "end"
+            info "end ${peer_name}"
             ;;
     esac
 }
