@@ -759,10 +759,10 @@ function tasks() {
             shift # name
             local name="${1}" && shift
 
-            debug "name=${name} now=${epoch} next=${_tasks_next["${name}"]} f/s/s/t=${_tasks["${name}"]}"
+            debug "name=${name} now=$(epoch) next=${_tasks_next["${name}"]} f/s/s/t=${_tasks["${name}"]}"
 
-            unset _tasks["${task}"]
-            unset _tasks_next["${task}"]
+            unset _tasks["${name}"]
+            unset _tasks_next["${name}"]
             ;;
         run)
             local frequency start stop task next now
