@@ -1361,7 +1361,7 @@ function wireproxy_interface() {
 
             if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
             then
-                local reload_timeout="$(($(epoch) + 30))"
+                local reload_timeout="$(($(epoch) + 45))"
                 local reload_status="success"
 
                 touch "${WIREPROXY_RELOAD_FILE}"
