@@ -719,6 +719,54 @@ WT_KV_TYPE="${WT_KV_TYPE:-json}"
 alias kv="${WT_KV_TYPE}_kv"
 kv ""        || die "invalid WT_KV_TYPE *${WT_KV_TYPE}*, options: $(options kv)"
 
+# env_config
+
+function env_config() {
+    local key="${1}" && shift
+
+    case "${key}" in
+        init)
+            declare -g -A config
+            ;;
+        up)
+            local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
+
+            config["host_name"]="${WGQ_HOST_PRIVATE_KEY_FILE%.key}"
+            config["host_id"]="${host_id}"
+
+            config["peer_name_list"]=""
+            config["peer_id_list"]=""
+
+            for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+            do
+                local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
+
+                if [ "${peer_id}" == "${host_id}" ]
+                then
+                    continue
+                fi
+
+                local peer_name="${peer_pub_file##*/}" # remove path
+                peer_name="${peer_name%.pub}" # remove extension
+
+                config["peer_name_list"]+="${peer_name} "
+                config["peer_id_list"]+="${peer_id} "
+
+                config["peer_id_${peer_name}"]="${peer_id}"
+            done
+
+            config["peer_name_list"]="${config["peer_name_list"]% }"
+            config["peer_id_list"]="${config["peer_id_list"]% }"
+            ;;
+    esac
+}
+
+alias config="env_config"
+
+WT_CONFIG_TYPE="${WT_CONFIG_TYPE:-env}"
+alias config="${WT_CONFIG_TYPE}_config"
+config ""        || die "invalid WT_KVWT_CONFIG_TYPE_TYPE *${WT_CONFIG_TYPE}*, options: $(options config)"
+
 # tasks
 
 function tasks() {
