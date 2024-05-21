@@ -904,18 +904,6 @@ function wg_interface() {
                         done
                     }
                     ;;
-                peer_name_list)
-                    {
-                        wg_interface get peer_id_list
-                    } | {
-                        while read peer_id
-                        do
-                            echo -n "${peer_id} "
-                        done
-                    } | {
-                        sed "s, $,,"
-                    }
-                    ;;
                 hostname)
                     id="${1}" && shift
                     echo "${id}"
@@ -1258,19 +1246,6 @@ function wg_quick_interface() {
 
                             }
                         done
-                    }
-                    ;;
-                peer_name_list)
-                    {
-                        wg_quick_interface get peer_id_list
-                    } | {
-                        while read peer_id
-                        do
-                            wg_quick_interface get hostname "${peer_id}"
-                            echo -n " "
-                        done
-                    } | {
-                        sed "s, $,,"
                     }
                     ;;
                 hostname)
@@ -1652,9 +1627,6 @@ function wireproxy_interface() {
                     wg_quick_interface "${action}" "${name}" ${@}
                     ;;
                 peer_id_list)
-                    wg_quick_interface "${action}" "${name}" ${@}
-                    ;;
-                peer_name_list)
                     wg_quick_interface "${action}" "${name}" ${@}
                     ;;
                 hostname)
@@ -2710,32 +2682,13 @@ function peer_context() {
     local action="${1}" && shift
 
     case "${action}" in
-        init)
-            info
-
-            declare -g -A _peer_context
-            ;;
-        add_peer)
-            local peer_name="${1}" && shift
-            local host_id="${1}" && shift
-            local peer_id="${1}" && shift
-            local log_id="${peer_id}"
-            local log_name="${peer_name}"
-
-            info "${peer_name}"
-
-            _peer_context["host_id_${peer_name}"]="${host_id}"
-            _peer_context["peer_id_${peer_name}"]="${peer_id}"
-            _peer_context["log_id_${peer_name}"]="${log_id}"
-            _peer_context["log_name_${peer_name}"]="${log_name}"
-            ;;
         set)
             local peer_name="${1}" && shift
 
-            host_id="${_peer_context["host_id_${peer_name}"]}"
-            peer_id="${_peer_context["peer_id_${peer_name}"]}"
-            log_id="${_peer_context["log_id_${peer_name}"]}"
-            log_name="${_peer_context["log_name_${peer_name}"]}"
+            host_id="${config["host_id"]}"
+            peer_id="${config["peer_id_${peer_name}"]}"
+            log_id="${config["peer_id_${peer_name}"]}"
+            log_name="${peer_name}"
             ;;
         unset)
             unset host_id
@@ -2922,25 +2875,24 @@ function peer() {
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
 
-            declare -g -a _peer_name_list
-
             peer_context init
             peer_state init
             ;;
         start)
-            local host_id="${1}" && shift
-            local peer_id="${1}" && shift
-            local peer_name="$(interface get hostname "${peer_id}")"
+            info
 
-            info "${peer_name}"
-
-            _peer_name_list+=("${peer_name}")
-
-            peer_context add_peer "${peer_name}" "${host_id}" "${peer_id}"
-            peer_state start_peer "${peer_name}"
+            for peer_name in ${config["peer_name_list"]}
+            do
+                peer_state start_peer "${peer_name}"
+            done
             ;;
         stop)
-            peer_state stop_peer "${peer_name}"
+            info
+
+            for peer_name in ${config["peer_name_list"]}
+            do
+                peer_state stop_peer "${peer_name}"
+            done
             ;;
         poll_status)
             local peer_name="${1}" && shift
@@ -2990,7 +2942,7 @@ function peer() {
             esac
             ;;
         run)
-            for peer_name in ${_peer_name_list[@]}
+            for peer_name in ${config["peer_name_list"]}
             do
                 peer_context set "${peer_name}"
 
@@ -3110,10 +3062,11 @@ function wirething_main() {
 
             wirething_main deps check
 
+            config init
+            tasks init
+
             wt_type_for_each init
             wt_others_for_each init
-
-            tasks init
             ;;
         signal)
             info "${@}"
@@ -3151,6 +3104,8 @@ function wirething_main() {
             mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
+            config up
+
             wt_type_for_each up
             wt_others_for_each up
 
@@ -3180,14 +3135,10 @@ function wirething_main() {
             info
             local _host_id="$(interface get host_id)"
             local peer_id_list="$(interface get peer_id_list)"
-            local peer_name_list="$(interface get peer_name_list)"
 
             host_status_usecase start "${_host_id}"
 
-            for _peer_id in ${peer_id_list}
-            do
-                peer start "${_host_id}" "${_peer_id}"
-            done
+            peer start
             ;;
         loop)
             info "start"
