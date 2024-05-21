@@ -2664,6 +2664,7 @@ function peer_context() {
     case "${action}" in
         init)
             info
+
             declare -g -A _peer_context
             ;;
         add_peer)
@@ -2697,6 +2698,89 @@ function peer_context() {
     esac
 }
 
+function peer_state() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            info
+
+            declare -g -A _peer_state
+
+            declare -g -A _peer_event_transitions=(
+                ["peer_start_start"]="on_peer_start"
+                ["peer_wait_wait"]=""
+                ["peer_wait_offline"]="on_peer_offline"
+                ["peer_wait_online"]=""
+                ["peer_online_online"]=""
+                ["peer_online_offline"]="on_peer_offline"
+                ["peer_offline_offline"]=""
+                ["peer_offline_online"]="on_peer_online"
+                ["peer_stop_stop"]="on_peer_stop"
+            )
+
+            declare -g -A _peer_status_transitions=(
+                ["peer_start_start"]=""
+                ["peer_wait_wait"]=""
+                ["peer_wait_offline"]="offline"
+                ["peer_wait_online"]="online"
+                ["peer_online_online"]=""
+                ["peer_online_offline"]="offline"
+                ["peer_offline_offline"]=""
+                ["peer_offline_online"]="online"
+                ["peer_stop_stop"]=""
+            )
+            ;;
+        start_peer)
+            local peer_name="${1}" && shift
+            info "${peer_name}"
+
+            _peer_state["current_status_${peer_name}"]="start"
+            _peer_state["polled_status_${peer_name}"]="start"
+
+            peer_state transition "${peer_name}"
+
+            _peer_state["current_status_${peer_name}"]="wait"
+            _peer_state["polled_status_${peer_name}"]="wait"
+            ;;
+        stop_peer)
+            local peer_name="${1}" && shift
+            info "${peer_name}"
+
+            _peer_state["current_status_${peer_name}"]="stop"
+            _peer_state["polled_status_${peer_name}"]="stop"
+
+            peer_state transition "${peer_name}"
+            ;;
+        transition)
+            local peer_name="${1}" && shift
+
+            local current_status="${_peer_state["current_status_${peer_name}"]}"
+            local polled_status="${_peer_state["polled_status_${peer_name}"]}"
+            local transition="peer_${current_status}_${polled_status}"
+
+            local new_event="${_peer_event_transitions["${transition}"]}"
+
+            peer on_event "${peer_name}" "${new_event}"
+
+            local new_status="${_peer_status_transitions["${transition}"]}"
+
+            case "${new_status}" in
+                wait|stop|offline|online)
+                    info "${peer_name} status from ${current_status} to ${new_status}"
+                    _peer_state["current_status_${peer_name}"]="${new_status}"
+                    ;;
+            esac
+            ;;
+        set_polled_status)
+            local peer_name="${1}" && shift
+            local status="${1}" && shift
+
+            _peer_state["polled_status_${peer_name}"]="${status}"
+            ;;
+    esac
+}
+
 function peer() {
     local action="${1}" && shift
 
@@ -2711,9 +2795,10 @@ function peer() {
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
 
-            declare -g -A _peer_state
+            declare -g -a _peer_name_list
 
             peer_context init
+            peer_state init
             ;;
         start)
             local host_id="${1}" && shift
@@ -2722,7 +2807,23 @@ function peer() {
 
             info "${peer_name}"
 
+            _peer_name_list+=("${peer_name}")
+
             peer_context add_peer "${peer_name}" "${host_id}" "${peer_id}"
+            peer_state start_peer "${peer_name}"
+            ;;
+        stop)
+            peer_state stop_peer "${peer_name}"
+            ;;
+        for_each)
+            for peer_name in ${_peer_name_list[@]}
+            do
+                peer_context set "${peer_name}"
+
+                ${@} "${peer_name}"
+
+                peer_context unset
+            done
             ;;
         interface_get_peer_status)
             local peer_name="${1}" && shift
@@ -2771,66 +2872,13 @@ function peer() {
 
             debug "${peer_name} ${status}"
 
-            _peer_state["polled_status_${peer_name}"]="${status}"
+            peer_state set_polled_status "${peer_name}" "${status}"
 
             peer_context unset
             ;;
-        transition_init)
-            info
-
-            declare -g -A _event_transitions=(
-                ["peer_start_start"]="on_peer_start"
-                ["peer_wait_wait"]=""
-                ["peer_wait_offline"]="on_peer_offline"
-                ["peer_wait_online"]=""
-                ["peer_online_online"]=""
-                ["peer_online_offline"]="on_peer_offline"
-                ["peer_offline_offline"]=""
-                ["peer_offline_online"]="on_peer_online"
-                ["peer_stop_stop"]="on_peer_stop"
-            )
-
-            declare -g -A _status_transitions=(
-                ["peer_start_start"]=""
-                ["peer_wait_wait"]=""
-                ["peer_wait_offline"]="offline"
-                ["peer_wait_online"]="online"
-                ["peer_online_online"]=""
-                ["peer_online_offline"]="offline"
-                ["peer_offline_offline"]=""
-                ["peer_offline_online"]="online"
-                ["peer_stop_stop"]=""
-            )
-            ;;
-        transition_start)
+        on_event)
             local peer_name="${1}" && shift
-            info "${peer_name}"
-
-            _peer_state["current_status_${peer_name}"]="start"
-            _peer_state["polled_status_${peer_name}"]="start"
-
-            peer transition "${peer_name}"
-
-            _peer_state["current_status_${peer_name}"]="wait"
-            _peer_state["polled_status_${peer_name}"]="wait"
-            ;;
-        transition_stop)
-            local peer_name="${1}" && shift
-            info "${peer_name}"
-
-            _peer_state["current_status_${peer_name}"]="stop"
-            _peer_state["polled_status_${peer_name}"]="stop"
-
-            peer transition "${peer_name}"
-            ;;
-        transition)
-            local peer_name="${1}" && shift
-
-            local current_status="${_peer_state["current_status_${peer_name}"]}"
-            local polled_status="${_peer_state["polled_status_${peer_name}"]}"
-            local transition="peer_${current_status}_${polled_status}"
-
-            local new_event="${_event_transitions["${transition}"]}"
+            local new_event="${1}" && shift
 
             case "${new_event}" in
                 on_peer_start)
@@ -2868,47 +2916,18 @@ function peer() {
                     tasks unregister name "peer_ensure_host_endpoint_${peer_name}"
                     ;;
             esac
-
-            local new_status="${_status_transitions["${transition}"]}"
-
-            case "${new_status}" in
-                wait|stop|offline|online)
-                    info "${peer_name} status from ${current_status} to ${new_status}"
-                    _peer_state["current_status_${peer_name}"]="${new_status}"
-                    ;;
-            esac
-            ;;
-        for_each)
-            local peer_name_list="${1}" && shift
-            local action="${1}" && shift
-
-            for peer_name in ${peer_name_list}
-            do
-                peer_context set "${peer_name}"
-
-                peer "${action}" "${peer_name}"
-
-                peer_context unset
-            done
             ;;
         loop)
-            local peer_name_list="${1}" && shift
-            info "start ${peer_name_list}"
-
-            tasks init
-            peer transition_init
-            peer for_each "${peer_name_list}" transition_start
+            info "start"
 
             while true
             do
-                peer for_each "${peer_name_list}" transition
+                peer for_each "peer_state transition"
                 tasks run
                 sleep 5
             done
 
-            peer for_each "${peer_name_list}" transition_stop
-
-            info "end ${peer_name_list}"
+            info "end"
             ;;
     esac
 }
@@ -3023,6 +3042,8 @@ function wirething_main() {
 
             wt_type_for_each init
             wt_others_for_each init
+
+            tasks init
             ;;
         signal)
             info "${@}"
@@ -3098,7 +3119,7 @@ function wirething_main() {
                 peer start "${_host_id}" "${_peer_id}"
             done
 
-            peer loop "${peer_name_list}" &
+            peer loop &
             ;;
         wait)
             info
