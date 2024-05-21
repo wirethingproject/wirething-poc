@@ -2781,6 +2781,52 @@ function peer_state() {
     esac
 }
 
+function peer_task() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        interface_get_peer_status)
+            local peer_name="${1}" && shift
+
+            peer_context set "${peer_name}"
+
+            interface get peer_status "${peer_id}"
+
+            peer_context unset
+            ;;
+        fetch_peer_endpoint_since_all)
+            local peer_name="${1}" && shift
+
+            peer_context set "${peer_name}"
+
+            info "${peer_name}"
+            wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all" || true
+
+            peer_context unset
+            ;;
+        fetch_peer_endpoint)
+            local peer_name="${1}" && shift
+
+            peer_context set "${peer_name}"
+
+            info "${peer_name}"
+            wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}s" || true
+
+            peer_context unset
+            ;;
+        ensure_host_endpoint_is_published)
+            local peer_name="${1}" && shift
+
+            peer_context set "${peer_name}"
+
+            info "${peer_name}"
+            wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" || true
+
+            peer_context unset
+            ;;
+    esac
+}
+
 function peer() {
     local action="${1}" && shift
 
@@ -2825,48 +2871,9 @@ function peer() {
                 peer_context unset
             done
             ;;
-        interface_get_peer_status)
-            local peer_name="${1}" && shift
-
-            peer_context set "${peer_name}"
-
-            interface get peer_status "${peer_id}"
-
-            peer_context unset
-            ;;
-        fetch_peer_endpoint_since_all)
-            local peer_name="${1}" && shift
-
-            peer_context set "${peer_name}"
-
-            info "${peer_name}"
-            wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "all" || true
-
-            peer_context unset
-            ;;
-        fetch_peer_endpoint)
-            local peer_name="${1}" && shift
-
-            peer_context set "${peer_name}"
-
-            info "${peer_name}"
-            wirething fetch_peer_endpoint "${host_id}" "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}s" || true
-
-            peer_context unset
-            ;;
-        ensure_host_endpoint_is_published)
-            local peer_name="${1}" && shift
-
-            peer_context set "${peer_name}"
-
-            info "${peer_name}"
-            wirething ensure_host_endpoint_is_published "${host_id}" "${peer_id}" || true
-
-            peer_context unset
-            ;;
         poll_status)
             local peer_name="${1}" && shift
-            local status="$(peer interface_get_peer_status "${peer_name}")"
+            local status="$(peer_task interface_get_peer_status "${peer_name}")"
 
             peer_context set "${peer_name}"
 
@@ -2886,7 +2893,8 @@ function peer() {
 
                     tasks register name "peer_poll_status_${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
-                        start "+${WT_PEER_OFFLINE_START_DELAY}" stop never \
+                        start "+${WT_PEER_OFFLINE_START_DELAY}" \
+                        stop never \
                         task "peer poll_status ${peer_name}"
                     ;;
                 on_peer_stop)
@@ -2897,17 +2905,19 @@ function peer() {
                 on_peer_offline)
                     info "${new_event}"
 
-                    peer fetch_peer_endpoint_since_all "${peer_name}"
+                    peer_task fetch_peer_endpoint_since_all "${peer_name}"
 
                     tasks register name "peer_poll_endpoint_${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
-                        start now stop never \
-                        task "peer fetch_peer_endpoint ${peer_name}"
+                        start now \
+                        stop never \
+                        task "peer_task fetch_peer_endpoint ${peer_name}"
 
                     tasks register name "peer_ensure_host_endpoint_${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_ENSURE_INTERVAL}" \
-                        start now stop never \
-                        task "peer ensure_host_endpoint_is_published ${peer_name}"
+                        start now \
+                        stop never \
+                        task "peer_task ensure_host_endpoint_is_published ${peer_name}"
                     ;;
                 on_peer_online)
                     info "${new_event}"
