@@ -2824,6 +2824,39 @@ function peer_task() {
 
             peer_context unset
             ;;
+        register)
+            local task="${1}" && shift
+            local peer_name="${1}" && shift
+
+            case "${task}" in
+                peer_poll_endpoint)
+                    tasks register name "peer_poll_endpoint_${peer_name}" \
+                        frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
+                        start now \
+                        stop never \
+                        task "peer_task fetch_peer_endpoint ${peer_name}"
+                    ;;
+                peer_ensure_host_endpoint)
+                    tasks register name "peer_ensure_host_endpoint_${peer_name}" \
+                        frequency "${WT_PEER_OFFLINE_ENSURE_INTERVAL}" \
+                        start now \
+                        stop never \
+                        task "peer_task ensure_host_endpoint_is_published ${peer_name}"
+                    ;;
+            esac
+            ;;
+        unregister)
+            local task="${1}" && shift
+            local peer_name="${1}" && shift
+
+            case "${task}" in
+                peer_poll_endpoint)
+                    tasks unregister name "peer_poll_endpoint_${peer_name}"
+                    ;;
+                peer_ensure_host_endpoint)
+                    tasks unregister name "peer_ensure_host_endpoint_${peer_name}"
+                    ;;
+            esac
     esac
 }
 
@@ -2907,28 +2940,26 @@ function peer() {
 
                     peer_task fetch_peer_endpoint_since_all "${peer_name}"
 
-                    tasks register name "peer_poll_endpoint_${peer_name}" \
-                        frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
-                        start now \
-                        stop never \
-                        task "peer_task fetch_peer_endpoint ${peer_name}"
-
-                    tasks register name "peer_ensure_host_endpoint_${peer_name}" \
-                        frequency "${WT_PEER_OFFLINE_ENSURE_INTERVAL}" \
-                        start now \
-                        stop never \
-                        task "peer_task ensure_host_endpoint_is_published ${peer_name}"
+                    peer_task register "peer_poll_endpoint" "${peer_name}"
+                    peer_task register "peer_ensure_host_endpoint" "${peer_name}"
                     ;;
                 on_peer_online)
                     info "${new_event}"
 
-                    tasks unregister name "peer_poll_endpoint_${peer_name}"
-                    tasks unregister name "peer_ensure_host_endpoint_${peer_name}"
+                    peer_task unregister "peer_poll_endpoint" "${peer_name}"
+                    peer_task unregister "peer_ensure_host_endpoint" "${peer_name}"
                     ;;
             esac
             ;;
         run)
-            peer for_each "peer_state transition"
+            for peer_name in ${_peer_name_list[@]}
+            do
+                peer_context set "${peer_name}"
+
+                peer_state transition "${peer_name}"
+
+                peer_context unset
+            done
             ;;
     esac
 }
@@ -3140,6 +3171,16 @@ function wirething_main() {
     esac
 }
 
+# main
+
+function main() {
+    wirething_main init
+    wirething_main up
+    wirething_main start
+    wirething_main loop
+    wirething_main wait
+}
+
 # cli
 
 function help() {
@@ -3189,15 +3230,7 @@ function cli() {
     esac
 }
 
-# main
-
-function main() {
-    wirething_main init
-    wirething_main up
-    wirething_main start
-    wirething_main loop
-    wirething_main wait
-}
+# args
 
 case "${1:-${WT_ACTION:-}}" in
     cli)
