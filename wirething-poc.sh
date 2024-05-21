@@ -2927,17 +2927,8 @@ function peer() {
                     ;;
             esac
             ;;
-        loop)
-            info "start"
-
-            while true
-            do
-                peer for_each "peer_state transition"
-                tasks run
-                sleep 5
-            done
-
-            info "end"
+        run)
+            peer for_each "peer_state transition"
             ;;
     esac
 }
@@ -3128,8 +3119,18 @@ function wirething_main() {
             do
                 peer start "${_host_id}" "${_peer_id}"
             done
+            ;;
+        loop)
+            info "start"
 
-            peer loop &
+            while true
+            do
+                peer run
+                tasks run
+                sleep 5
+            done
+
+            info "end"
             ;;
         wait)
             info
@@ -3194,6 +3195,7 @@ function main() {
     wirething_main init
     wirething_main up
     wirething_main start
+    wirething_main loop
     wirething_main wait
 }
 
