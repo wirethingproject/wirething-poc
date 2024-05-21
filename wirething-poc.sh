@@ -2673,7 +2673,8 @@ function peer() {
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
 
-            declare -g -A _peer
+            declare -g -A _peer_context
+            declare -g -A _peer_state
             ;;
         start)
             local host_id="${1}" && shift
@@ -2688,10 +2689,10 @@ function peer() {
             then
                 info "enabled"
 
-                _peer["host_id_${peer_name}"]="${host_id}"
-                _peer["peer_id_${peer_name}"]="${peer_id}"
-                _peer["log_id_${peer_name}"]="${log_id}"
-                _peer["log_name_${peer_name}"]="${log_name}"
+                _peer_context["host_id_${peer_name}"]="${host_id}"
+                _peer_context["peer_id_${peer_name}"]="${peer_id}"
+                _peer_context["log_id_${peer_name}"]="${log_id}"
+                _peer_context["log_name_${peer_name}"]="${log_name}"
 
                 # peer loop "${peer_name}" &
             else
@@ -2701,10 +2702,10 @@ function peer() {
         set_context)
             local peer_name="${1}" && shift
 
-            host_id="${_peer["host_id_${peer_name}"]}"
-            peer_id="${_peer["peer_id_${peer_name}"]}"
-            log_id="${_peer["log_id_${peer_name}"]}"
-            log_name="${_peer["log_name_${peer_name}"]}"
+            host_id="${_peer_context["host_id_${peer_name}"]}"
+            peer_id="${_peer_context["peer_id_${peer_name}"]}"
+            log_id="${_peer_context["log_id_${peer_name}"]}"
+            log_name="${_peer_context["log_name_${peer_name}"]}"
             ;;
         unset_context)
             unset host_id
@@ -2759,7 +2760,7 @@ function peer() {
 
             debug "${peer_name} ${status}"
 
-            _peer["polled_status_${peer_name}"]="${status}"
+            _peer_state["polled_status_${peer_name}"]="${status}"
 
             peer unset_context
             ;;
@@ -2794,28 +2795,28 @@ function peer() {
             local peer_name="${1}" && shift
             info "${peer_name}"
 
-            _peer["current_status_${peer_name}"]="start"
-            _peer["polled_status_${peer_name}"]="start"
+            _peer_state["current_status_${peer_name}"]="start"
+            _peer_state["polled_status_${peer_name}"]="start"
 
             peer transition "${peer_name}"
 
-            _peer["current_status_${peer_name}"]="wait"
-            _peer["polled_status_${peer_name}"]="wait"
+            _peer_state["current_status_${peer_name}"]="wait"
+            _peer_state["polled_status_${peer_name}"]="wait"
             ;;
         transition_stop)
             local peer_name="${1}" && shift
             info "${peer_name}"
 
-            _peer["current_status_${peer_name}"]="stop"
-            _peer["polled_status_${peer_name}"]="stop"
+            _peer_state["current_status_${peer_name}"]="stop"
+            _peer_state["polled_status_${peer_name}"]="stop"
 
             peer transition "${peer_name}"
             ;;
         transition)
             local peer_name="${1}" && shift
 
-            local current_status="${_peer["current_status_${peer_name}"]}"
-            local polled_status="${_peer["polled_status_${peer_name}"]}"
+            local current_status="${_peer_state["current_status_${peer_name}"]}"
+            local polled_status="${_peer_state["polled_status_${peer_name}"]}"
             local transition="peer_${current_status}_${polled_status}"
 
             local new_event="${_event_transitions["${transition}"]}"
@@ -2862,7 +2863,7 @@ function peer() {
             case "${new_status}" in
                 wait|stop|offline|online)
                     info "${peer_name} status from ${current_status} to ${new_status}"
-                    _peer["current_status_${peer_name}"]="${new_status}"
+                    _peer_state["current_status_${peer_name}"]="${new_status}"
                     ;;
             esac
             ;;
