@@ -2894,16 +2894,6 @@ function peer() {
         stop)
             peer_state stop_peer "${peer_name}"
             ;;
-        for_each)
-            for peer_name in ${_peer_name_list[@]}
-            do
-                peer_context set "${peer_name}"
-
-                ${@} "${peer_name}"
-
-                peer_context unset
-            done
-            ;;
         poll_status)
             local peer_name="${1}" && shift
             local status="$(peer_task interface_get_peer_status "${peer_name}")"
