@@ -726,9 +726,10 @@ function env_config() {
 
     case "${key}" in
         init)
-            declare -g -A config
             ;;
         up)
+            declare -g -A config
+
             local host_wg_pub="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
 
             config["host_name"]="${WGQ_HOST_PRIVATE_KEY_FILE%.key}"
@@ -762,6 +763,8 @@ function env_config() {
             config["peer_name_list"]="${config["peer_name_list"]% }"
             config["peer_id_list"]="${config["peer_id_list"]% }"
             config["peer_wg_pub_list"]="${config["peer_wg_pub_list"]% }"
+
+            declare -r -g -A config
             ;;
     esac
 }
