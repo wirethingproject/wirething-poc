@@ -757,9 +757,9 @@ function env_config() {
 
             for peer_wg_pub_file in ${peer_wg_pub_file_list}
             do
-                if [ ! -f "${config_path}/${peer_pub_file}" ]
+                if [ ! -f "${config_path}/${peer_wg_pub_file}" ]
                 then
-                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${config_path}/${peer_pub_file}*"
+                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${config_path}/${peer_wg_pub_file}*"
                 fi
 
                 local peer_wg_pub="$(cat "${config_path}/${peer_wg_pub_file}")"
