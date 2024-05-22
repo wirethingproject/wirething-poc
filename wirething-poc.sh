@@ -725,19 +725,26 @@ function env_config() {
     local key="${1}" && shift
 
     case "${key}" in
-        init)
+        deps)
+            echo "wg"
             ;;
-        up)
+        init)
+            info
+
+            local config_path="${WT_CONFIG_PATH:?Variable not set}"
+            local host_wg_key_file="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
+            local peer_wg_pub_file_list="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
+
             declare -g -A config
 
-            if [ ! -f "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" ]
+            if [ ! -f "${config_path}/${host_wg_key_file}" ]
             then
-                die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}*"
+                die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${config_path}/${host_wg_key_file}*"
             fi
 
-            local host_wg_pub="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
+            local host_wg_pub="$(cat "${config_path}/${host_wg_key_file}" | wg pubkey)"
 
-            local host_name="${WGQ_HOST_PRIVATE_KEY_FILE##*/}" # remove path
+            local host_name="${host_wg_key_file##*/}" # remove path
             host_name="${host_name%.key}" # remove extension
 
             config["host_name"]="${host_name}"
@@ -748,14 +755,14 @@ function env_config() {
             config["peer_id_list"]=""
             config["peer_wg_pub_list"]=""
 
-            for peer_wg_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+            for peer_wg_pub_file in ${peer_wg_pub_file_list}
             do
-                if [ ! -f "${WT_CONFIG_PATH}/${peer_pub_file}" ]
+                if [ ! -f "${config_path}/${peer_pub_file}" ]
                 then
-                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${WT_CONFIG_PATH}/${peer_pub_file}*"
+                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${config_path}/${peer_pub_file}*"
                 fi
 
-                local peer_wg_pub="$(cat "${WT_CONFIG_PATH}/${peer_wg_pub_file}")"
+                local peer_wg_pub="$(cat "${config_path}/${peer_wg_pub_file}")"
 
                 if [ "${peer_wg_pub}" == "${host_wg_pub}" ]
                 then
@@ -776,6 +783,9 @@ function env_config() {
             config["peer_name_list"]="${config["peer_name_list"]% }"
             config["peer_id_list"]="${config["peer_id_list"]% }"
             config["peer_wg_pub_list"]="${config["peer_wg_pub_list"]% }"
+            ;;
+        up)
+            info
 
             declare -r -g -A config
             ;;
