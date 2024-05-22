@@ -30,7 +30,7 @@ function bash_compat() {
 
             if ! is_bash_compat 5 0
             then
-                version="${BASH_VERSINFO[@]}"
+                local version="${BASH_VERSINFO[@]}"
                 echo "bash ${version// /.}"
                 echo "bash < 5.0 not supported"
                 exit 1
@@ -149,8 +149,8 @@ function udp() {
             echo "lsof grep sed head"
             ;;
         open)
-            host="${1}" && shift
-            port="${1}" && shift
+            local host="${1}" && shift
+            local port="${1}" && shift
 
             exec {UDP_SOCKET}<>/dev/udp/${host}/${port}
             ;;
@@ -160,9 +160,9 @@ function udp() {
             unset UDP_SOCKET
             ;;
         port)
-            host="${1}" && shift
-            port="${1}" && shift
-            pid="${1}" && shift
+            local host="${1}" && shift
+            local port="${1}" && shift
+            local pid="${1}" && shift
 
             {
                 lsof -P -n -i "udp@${host}:${port}" -a -p "${pid}" \
@@ -172,7 +172,7 @@ function udp() {
             }
             ;;
         writeline)
-            line="${1}" && shift
+            local line="${1}" && shift
             echo "${line}" >&${UDP_SOCKET}
             ;;
         readline)
@@ -480,11 +480,11 @@ EOF
 
             while read peer_file
             do
-                hostname="$(fs_store _get "${domain}" "peers/${peer_file}" \
+                local hostname="$(fs_store _get "${domain}" "peers/${peer_file}" \
                         | grep "^WT_PEER_HOSTNAME=" \
                         | sed 's,.*"\(.*\)",\1,'
                 )"
-                address="$(fs_store _get "${domain}" "peers/${peer_file}" \
+                local address="$(fs_store _get "${domain}" "peers/${peer_file}" \
                         | grep "^WT_PEER_ADDRESS=" \
                         | sed 's,.*"\(.*\)",\1,'
                 )"
@@ -530,7 +530,7 @@ EOF
                     local domain="${1}" && shift
                     local hostname="${1}" && shift
 
-                    address="100.$((${RANDOM} % 62 + 65)).$((${RANDOM} % 254 + 1)).$((${RANDOM} % 254 + 1))"
+                    local address="100.$((${RANDOM} % 62 + 65)).$((${RANDOM} % 254 + 1)).$((${RANDOM} % 254 + 1))"
 
                     {
                         cat <<EOF
@@ -869,13 +869,13 @@ function wg_interface() {
             name="${1}" && shift
             case "${name}" in
                 host_port)
-                    port="${1}" && shift
+                    local port="${1}" && shift
                     info "host_port ${port:-''}"
                     wg set "${WG_INTERFACE}" listen-port "${port}"
                     ;;
                 peer_endpoint)
-                    peer="${1}" && shift
-                    endpoint="${1}" && shift
+                    local peer="${1}" && shift
+                    local endpoint="${1}" && shift
                     info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
                     wg set "${WG_INTERFACE}" peer "${peer}" endpoint "${endpoint}"
                     ;;
@@ -905,11 +905,11 @@ function wg_interface() {
                     }
                     ;;
                 hostname)
-                    id="${1}" && shift
+                    local id="${1}" && shift
                     echo "${id}"
                     ;;
                 peer_address)
-                    peer="${1}" && shift
+                    local peer="${1}" && shift
 
                     {
                         wg show "${WG_INTERFACE}" allowed-ips
@@ -922,8 +922,10 @@ function wg_interface() {
                     }
                     ;;
                 peer_status)
-                    peer="${1}" && shift
-                    address="$(wg_interface get peer_address "${peer}")"
+                    local peer="${1}" && shift
+                    local address="$(wg_interface get peer_address "${peer}")"
+
+                    local result
 
                     if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
                     then
@@ -936,7 +938,9 @@ function wg_interface() {
                     echo "${result}"
                     ;;
                 host_status)
-                    host="${1}" && shift
+                    local host="${1}" && shift
+
+                    local result
 
                     {
                         wg show "${WG_INTERFACE}" allowed-ips
@@ -957,7 +961,7 @@ function wg_interface() {
                     }
                     ;;
                 latest_handshake)
-                    peer="${1}" && shift
+                    local peer="${1}" && shift
 
                     {
                         wg show "${WG_INTERFACE}" latest-handshakes
@@ -970,10 +974,12 @@ function wg_interface() {
                     }
                     ;;
                 handshake_timeouted)
-                    peer="${1}" && shift
+                    local peer="${1}" && shift
 
-                    last_handshake="$(wg_interface get latest_handshake "${peer}")"
-                    handshake_delta="$(($(epoch) - ${last_handshake}))"
+                    local last_handshake="$(wg_interface get latest_handshake "${peer}")"
+                    local handshake_delta="$(($(epoch) - ${last_handshake}))"
+
+                    local result
 
                     if [[ ${handshake_delta} -lt ${WG_HANDSHAKE_TIMEOUT} ]]
                     then
@@ -991,7 +997,7 @@ function wg_interface() {
             {
                 wg show interfaces
             } | {
-                status="down"
+                local status="down"
 
                 if [ "${WG_INTERFACE:-}" != "" ] && grep "${WG_INTERFACE}" 1>&${WT_LOG_DEBUG}
                 then
@@ -1095,7 +1101,7 @@ EOF
 
         if [ -f "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" ]
         then
-            endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")")
+            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")")
             if [ "${endpoint}" != "" ]
             then
             cat <<EOF
@@ -1214,7 +1220,7 @@ function wg_quick_interface() {
             wg_interface "${action}" ${@}
             ;;
         get)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 host_id)
                     {
@@ -1249,7 +1255,7 @@ function wg_quick_interface() {
                     }
                     ;;
                 hostname)
-                    id="${1}" && shift
+                    local id="${1}" && shift
                     kv get "wg_quick_hostname" "${id}"
                     ;;
                 *)
@@ -1517,10 +1523,10 @@ function wireproxy_interface() {
             }
             ;;
         set)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 host_port)
-                    port="${1}" && shift
+                    local port="${1}" && shift
                     info "host_port ${port:-''}"
 
                     if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
@@ -1529,8 +1535,8 @@ function wireproxy_interface() {
                     fi
                     ;;
                 peer_endpoint)
-                    peer="${1}" && shift
-                    endpoint="${1}" && shift
+                    local peer="${1}" && shift
+                    local endpoint="${1}" && shift
                     info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
 
                     if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
@@ -1541,10 +1547,10 @@ function wireproxy_interface() {
             esac
             ;;
         get)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 peer_status)
-                    peer="${1}" && shift
+                    local peer="${1}" && shift
 
                     {
                         if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")" ]
@@ -1556,7 +1562,9 @@ function wireproxy_interface() {
                     } | {
                         read last_keepalive
 
-                        keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+                        local keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+
+                        local result
 
                         if [[ ${keepalive_delta} -lt ${WIREPROXY_PEER_STATUS_TIMEOUT} ]]
                         then
@@ -1571,7 +1579,7 @@ function wireproxy_interface() {
                     }
                     ;;
                 host_status)
-                    host="${1}" && shift
+                    local host="${1}" && shift
 
                     {
                         find "${WT_PEER_LAST_KEEPALIVE_PATH}" -type f
@@ -1584,9 +1592,10 @@ function wireproxy_interface() {
                     } | sort -n | tail -n 1 | {
                         read last_keepalive
 
-                        keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+                        local keepalive_delta="$(($(epoch) - ${last_keepalive}))"
 
                         debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
+                        local result
 
                         if [[ ${keepalive_delta} -lt ${WIREPROXY_HOST_STATUS_TIMEOUT} ]]
                         then
@@ -1600,7 +1609,7 @@ function wireproxy_interface() {
                     }
                     ;;
                 handshake_timeouted)
-                    peer="${1}" && shift
+                    local peer="${1}" && shift
 
                     {
                         echo 0
@@ -1608,9 +1617,10 @@ function wireproxy_interface() {
                     }  | sort -n | tail -n 1 | {
                         read last_keepalive
 
-                        keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+                        local keepalive_delta="$(($(epoch) - ${last_keepalive}))"
 
                         debug "last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HANDSHAKE_TIMEOUT}"
+                        local result
 
                         if [[ ${keepalive_delta} -lt ${WIREPROXY_HANDSHAKE_TIMEOUT} ]]
                         then
@@ -1694,7 +1704,7 @@ function udphole_punch() {
             fi
             ;;
         get)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 port)
                     {
@@ -1824,7 +1834,7 @@ function stun_punch() {
             done
             ;;
         get)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 port)
                     info "port ${STUN_LOCAL_PORT:-''}"
@@ -1865,6 +1875,8 @@ function ntfy_pubsub() {
         status)
             debug "curl -sS --head ${NTFY_URL}"
 
+            local result
+
             if curl -sS --head "${NTFY_URL}" 2>&${WT_LOG_DEBUG} >&${WT_LOG_DEBUG}
             then
                 result="online"
@@ -1876,8 +1888,8 @@ function ntfy_pubsub() {
             echo "${result}"
             ;;
         publish)
-            topic="${1}" && shift
-            request="${1}" && shift
+            local topic="${1}" && shift
+            local request="${1}" && shift
             info "$(short "${topic}") request: $(short "${request}")"
 
             {
@@ -1899,8 +1911,8 @@ function ntfy_pubsub() {
             }
             ;;
         poll)
-            topic="${1}" && shift
-            since="${1}" && shift
+            local topic="${1}" && shift
+            local since="${1}" && shift
 
             {
                 curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_POLL_TIMEOUT}" --stderr - \
@@ -1929,7 +1941,7 @@ function ntfy_pubsub() {
             }
             ;;
         subscribe)
-            topic="${1}" && shift
+            local topic="${1}" && shift
             debug "$(short "${topic}") starting"
 
             {
@@ -2019,8 +2031,10 @@ function gpg_ephemeral_encryption() {
             ;;
         encrypt)
             debug
-            data="${1}" && shift
-            id_list="${@}" && shift
+            local data="${1}" && shift
+            local id_list="${@}" && shift
+
+            local recipient
 
             printf -v recipient " --hidden-recipient %s@${GPG_DOMAIN_NAME}" ${id_list}
 
@@ -2118,9 +2132,9 @@ function totp_digest() {
 function totp_token() {
     read digest
     # Read the last 4 bits and convert it into an unsigned integer.
-    start="$(( 0x${digest:(-1)} * 2))"
+    local start="$(( 0x${digest:(-1)} * 2))"
     # Read a 32-bit positive integer and take at most six rightmost digits.
-    token="$(( ((0x${digest:${start}:8}) & 0x7FFFFFFF) % $((10 ** ${TOTP_DIGITS})) ))"
+    local token="$(( ((0x${digest:${start}:8}) & 0x7FFFFFFF) % $((10 ** ${TOTP_DIGITS})) ))"
     # Pad the token number with leading zeros if needed.
     printf "%0${TOTP_DIGITS}d\n" "${token}"
 }
@@ -2141,14 +2155,16 @@ function totp_topic() {
             TOTP_HMAC="${TOTP_HMAC:-python}"
             ;;
         publish)
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
+            local peer_id="${1}" && shift
+
+            local host_id="${config["host_id"]}"
 
             totp_digest "host_id" "peer_id" | "${TOTP_TOKEN}"
             ;;
         subscribe)
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
+            local peer_id="${1}" && shift
+
+            local host_id="${config["host_id"]}"
 
             totp_digest "peer_id" "host_id" | "${TOTP_TOKEN}"
             ;;
@@ -2265,7 +2281,7 @@ function wirething() {
             local host_id="${1}" && shift
             info "$(short "${peer_id}")"
 
-            value="${WT_PID}"
+            local value="${WT_PID}"
 
             {
                 encryption encrypt "${value}" "${host_id} ${peer_id}" 2>&${WT_LOG_DEBUG} \
@@ -2300,23 +2316,23 @@ function wirething() {
             }
             ;;
         set)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 host_port)
-                    port="${1}" && shift
+                    local port="${1}" && shift
                     info "host_port ${port}"
                     echo "${port}" > "${WT_HOST_PORT_FILE}"
 
                     interface set host_port "${port}"
                     ;;
                 host_endpoint)
-                    endpoint="${1}" && shift
+                    local endpoint="${1}" && shift
                     info "host_endpoint ${endpoint}"
                     echo "${endpoint}" > "${WT_HOST_ENDPOINT_FILE}"
                     ;;
                 peer_endpoint)
-                    peer_id="${1}" && shift
-                    endpoint="${1}" && shift
+                    local peer_id="${1}" && shift
+                    local endpoint="${1}" && shift
                     info "peer_endpoint $(short "${peer_id}") ${endpoint}"
                     echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")"
 
@@ -2325,21 +2341,21 @@ function wirething() {
             esac
             ;;
         get)
-            name="${1}" && shift
+            local name="${1}" && shift
             case "${name}" in
                 host_port)
-                    port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG})"
+                    local port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG})"
                     debug "host_port ${port:-''}"
                     echo "${port}"
                     ;;
                 host_endpoint)
-                    endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
+                    local endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
                     debug "host_endpoint ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
                 peer_endpoint)
-                    peer_id="${1}" && shift
-                    endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" 2>&${WT_LOG_DEBUG} || echo)"
+                    local peer_id="${1}" && shift
+                    local endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" 2>&${WT_LOG_DEBUG} || echo)"
                     debug "peer_endpoint $(short "${peer_id}") ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
@@ -2374,8 +2390,8 @@ function wirething() {
             ;;
         broadcast_host_endpoint)
             debug
-            host_id="${1}" && shift
-            peer_id_list="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id_list="${1}" && shift
 
             for _peer_id in ${peer_id_list}
             do
@@ -2384,8 +2400,8 @@ function wirething() {
             ;;
         publish_host_endpoint)
             debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
 
             {
                 wirething get host_endpoint
@@ -2419,9 +2435,9 @@ function wirething() {
             ;;
         poll_encrypted_host_endpoint)
             debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
-            since="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
+            local since="${1}" && shift
 
             {
                 topic publish "${host_id}" "${peer_id}"
@@ -2432,9 +2448,9 @@ function wirething() {
             ;;
         poll_encrypted_peer_endpoint)
             debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
-            since="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
+            local since="${1}" && shift
 
             {
                 topic subscribe "${host_id}" "${peer_id}"
@@ -2445,14 +2461,14 @@ function wirething() {
             ;;
         on_new_peer_endpoint)
             debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
 
             while read new_peer_endpoint
             do
                 info "${new_peer_endpoint}"
 
-                current_peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
+                local current_peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
 
                 if [[ "${new_peer_endpoint}" != "${current_peer_endpoint}" ]]
                 then
@@ -2464,7 +2480,7 @@ function wirething() {
             info
             local host_id="${1}" && shift
             local peer_id="${1}" && shift
-            since="all"
+            local since="all"
 
             {
                 wirething poll_encrypted_host_endpoint "${host_id}" "${peer_id}" "${since}"
@@ -2506,9 +2522,9 @@ function wirething() {
             ;;
         fetch_peer_endpoint)
             debug
-            host_id="${1}" && shift
-            peer_id="${1}" && shift
-            since="${1}" && shift
+            local host_id="${1}" && shift
+            local peer_id="${1}" && shift
+            local since="${1}" && shift
 
             {
                 wirething poll_encrypted_peer_endpoint "${host_id}" "${peer_id}" "${since}"
