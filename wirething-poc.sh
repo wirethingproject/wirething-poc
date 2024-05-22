@@ -737,7 +737,10 @@ function env_config() {
 
             local host_wg_pub="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
 
-            config["host_name"]="${WGQ_HOST_PRIVATE_KEY_FILE%.key}"
+            local host_name="${WGQ_HOST_PRIVATE_KEY_FILE##*/}" # remove path
+            host_name="${host_name%.key}" # remove extension
+
+            config["host_name"]="${host_name}"
             config["host_id"]="${host_wg_pub}"
             config["host_wg_pub"]="${host_wg_pub}"
 
