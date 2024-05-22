@@ -730,6 +730,11 @@ function env_config() {
         up)
             declare -g -A config
 
+            if [ ! -f "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" ]
+            then
+                die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}*"
+            fi
+
             local host_wg_pub="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
 
             config["host_name"]="${WGQ_HOST_PRIVATE_KEY_FILE%.key}"
@@ -740,16 +745,21 @@ function env_config() {
             config["peer_id_list"]=""
             config["peer_wg_pub_list"]=""
 
-            for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+            for peer_wg_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
             do
-                local peer_wg_pub="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
+                if [ ! -f "${WT_CONFIG_PATH}/${peer_pub_file}" ]
+                then
+                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${WT_CONFIG_PATH}/${peer_pub_file}*"
+                fi
 
-                if [ "${peer_wg_pub}" == "${config["host_wg_pub"]}" ]
+                local peer_wg_pub="$(cat "${WT_CONFIG_PATH}/${peer_wg_pub_file}")"
+
+                if [ "${peer_wg_pub}" == "${host_wg_pub}" ]
                 then
                     continue
                 fi
 
-                local peer_name="${peer_pub_file##*/}" # remove path
+                local peer_name="${peer_wg_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
                 config["peer_name_list"]+="${peer_name} "
