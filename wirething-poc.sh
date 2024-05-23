@@ -778,7 +778,7 @@ function env_config() {
                 peer_name="${peer_name%.pub}" # remove extension
 
                 config["peer_log_name_${peer_name}"]="${peer_name}"
-                config["peer_log_id_${peer_name}"]="${host_wg_pub}"
+                config["peer_log_id_${peer_name}"]="${peer_wg_pub}"
 
                 config["peer_wg_pub_${peer_name}"]="${peer_wg_pub}"
                 config["peer_gpg_keyname_${peer_name}"]="${peer_wg_pub}@${gpg_domain_name}"
