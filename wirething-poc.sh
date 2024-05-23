@@ -751,11 +751,8 @@ function env_config() {
             host_name="${host_name%.key}" # remove extension
 
             config["host_name"]="${host_name}"
-            config["host_id"]="${host_wg_pub}"
-
             config["host_log_name"]="${host_name}"
             config["host_log_id"]="${host_wg_pub}"
-
             config["host_wg_pub"]="${host_wg_pub}"
             config["host_gpg_keyname"]="${host_wg_pub}@${gpg_domain_name}"
             config["host_totp_id"]="${host_wg_pub}"
@@ -869,8 +866,8 @@ function tasks() {
 
                 if [[ ${now} -ge ${start} && ${now} -ge ${next} && ${now} -lt ${stop} ]]
                 then
-                    debug "name=${name} frequency=${frequency} start=${start} stop=${stop} next=${next} now=${now}"
-                    # debug "name=${name} task='${task}'"
+                    # debug "name=${name} frequency=${frequency} start=${start} stop=${stop} next=${next} now=${now}"
+                    ## debug "name=${name} task='${task}'"
 
                     _tasks_next["${name}"]="$((${now} + ${frequency}))"
                     ${task} || error "task '${task}' returns ${?}"
@@ -960,8 +957,6 @@ function wg_interface() {
                     echo "${result}"
                     ;;
                 host_status)
-                    local host="${1}" && shift
-
                     local result
 
                     {
@@ -978,7 +973,7 @@ function wg_interface() {
 
                         done
 
-                        debug "host_status $(short "${host}") ${result:-''}"
+                        debug "host_status ${result}"
                         echo "${result}"
                     }
                     ;;
@@ -1517,8 +1512,6 @@ function wireproxy_interface() {
                     }
                     ;;
                 host_status)
-                    local host="${1}" && shift
-
                     {
                         find "${WT_PEER_LAST_KEEPALIVE_PATH}" -type f
                     } | {
@@ -1542,7 +1535,7 @@ function wireproxy_interface() {
                             result="offline"
                         fi
 
-                        debug "host_status $(short "${host}") ${result}"
+                        debug "host_status ${result}"
                         echo "${result}"
                     }
                     ;;
@@ -2522,7 +2515,7 @@ function host_status_usecase() {
             ;;
         online)
             info
-            while [ "$(interface get host_status "${config["host_id"]}")" == "online" ]
+            while [ "$(interface get host_status)" == "online" ]
             do
                 debug "pause: ${WT_HOST_OFFLINE_INTERVAL} seconds"
                 sleep "${WT_HOST_OFFLINE_INTERVAL}"
@@ -2533,7 +2526,7 @@ function host_status_usecase() {
 
             local next_ensure="0"
 
-            while [ "$(interface get host_status "${config["host_id"]}")" == "offline" ]
+            while [ "$(interface get host_status)" == "offline" ]
             do
                 if [[ $(epoch) -gt ${next_ensure} ]]
                 then
@@ -2603,7 +2596,7 @@ function host_status_usecase() {
 
             while true
             do
-                case "$(interface get host_status "${config["host_id"]}")" in
+                case "$(interface get host_status)" in
                     online)
                         host_status_usecase online
                         ;;
