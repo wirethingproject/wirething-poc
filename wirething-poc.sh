@@ -1031,6 +1031,8 @@ function wg_interface() {
 # wg quick interface
 
 function wg_quick_validate_peers() {
+    local peer_name
+
     for peer_name in ${config["peer_name_list"]}
     do
         WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name^^}_ALLOWED_IPS"
@@ -2816,6 +2818,7 @@ function peer() {
             ;;
         start)
             info
+            local peer_name
 
             for peer_name in ${config["peer_name_list"]}
             do
@@ -2824,6 +2827,7 @@ function peer() {
             ;;
         stop)
             info
+            local peer_name
 
             for peer_name in ${config["peer_name_list"]}
             do
@@ -2878,6 +2882,8 @@ function peer() {
             esac
             ;;
         run)
+            local peer_name
+
             for peer_name in ${config["peer_name_list"]}
             do
                 peer_context set "${peer_name}"
