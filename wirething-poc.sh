@@ -439,7 +439,7 @@ EOF
                 case "${WT_INTERFACE_TYPE}" in
                     wg_quick|wireproxy)
                         cat <<EOF
-WT_PEER_ID="$(fs_store _get "${domain}" "wg.pub")"
+WT_PEER_WG_PUB="$(fs_store _get "${domain}" "wg.pub")"
 EOF
                         ;;
                 esac
@@ -758,7 +758,6 @@ function env_config() {
             config["host_totp_id"]="${host_wg_pub}"
 
             config["peer_name_list"]=""
-            config["peer_id_list"]=""
             config["peer_wg_pub_list"]=""
 
             for _peer_wg_pub_file in ${peer_wg_pub_file_list}
@@ -778,8 +777,6 @@ function env_config() {
                 local peer_name="${_peer_wg_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
-                config["peer_id_${peer_name}"]="${peer_wg_pub}"
-
                 config["peer_log_name_${peer_name}"]="${peer_name}"
                 config["peer_log_id_${peer_name}"]="${host_wg_pub}"
 
@@ -788,12 +785,13 @@ function env_config() {
                 config["peer_totp_id_${peer_name}"]="${peer_wg_pub}"
 
                 config["peer_name_list"]+="${peer_name} "
-                config["peer_id_list"]+="${peer_wg_pub} "
                 config["peer_wg_pub_list"]+="${peer_wg_pub} "
+
+                WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${_peer_name^^}_ALLOWED_IPS"
+                config["peer_wg_quick_allowed_ips_${peer_name}"]="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
             done
 
             config["peer_name_list"]="${config["peer_name_list"]% }"
-            config["peer_id_list"]="${config["peer_id_list"]% }"
             config["peer_wg_pub_list"]="${config["peer_wg_pub_list"]% }"
             ;;
         up)
@@ -917,10 +915,10 @@ function wg_interface() {
                     wg set "${WG_INTERFACE}" listen-port "${port}"
                     ;;
                 peer_endpoint)
-                    local peer="${1}" && shift
+                    local peer_name="${1}" && shift
                     local endpoint="${1}" && shift
-                    info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
-                    wg set "${WG_INTERFACE}" peer "${peer}" endpoint "${endpoint}"
+                    info "peer_endpoint ${peer_name} ${endpoint}"
+                    wg set "${WG_INTERFACE}" peer "${config["peer_wg_pub_${peer_name}"]}" endpoint "${endpoint}"
                     ;;
             esac
             ;;
@@ -928,32 +926,32 @@ function wg_interface() {
             name="${1}" && shift
             case "${name}" in
                 peer_address)
-                    local peer="${1}" && shift
+                    local peer_name="${1}" && shift
 
                     {
                         wg show "${WG_INTERFACE}" allowed-ips
                     } | {
-                        grep "${peer}" | cut -f 2 | sed "s,/32,,"
+                        grep "${config["peer_wg_pub_${peer_name}"]}" \
+                            | cut -f 2 | sed "s,/32,,"
                     } | {
                         read address
-                        debug "peer_address $(short "${peer}") ${address:-''}"
+                        debug "peer_address ${peer_name} ${address:-''}"
                         echo "${address}"
                     }
                     ;;
                 peer_status)
-                    local peer="${1}" && shift
-                    local address="$(wg_interface get peer_address "${peer}")"
+                    local peer_name="${1}" && shift
 
-                    local result
+                    local address="$(wg_interface get peer_address "${peer_name}")"
+
+                    local result="offline"
 
                     if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
                     then
                         result="online"
-                    else
-                        result="offline"
                     fi
 
-                    debug "peer_status $(short "${peer}") ${result:-''}"
+                    debug "peer_status ${peer_name} ${result:-''}"
                     echo "${result}"
                     ;;
                 host_status)
@@ -1030,14 +1028,6 @@ function wg_interface() {
 
 # wg quick interface
 
-function wg_quick_validate_peers() {
-    for _peer_name in ${config["peer_name_list"]}
-    do
-        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${_peer_name^^}_ALLOWED_IPS"
-        local value="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
-    done
-}
-
 function wg_quick_generate_config_file() {
     debug
 
@@ -1068,32 +1058,24 @@ PrivateKey = $(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}")
 EOF
     fi
 
-    for _peer_wg_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+    for _peer_name in ${config["peer_name_list"]}
     do
-        local peer_name="${_peer_wg_pub_file##*/}" # remove path
-        peer_name="${peer_name%.pub}" # remove extension
-        peer_name="$(to_upper ${peer_name})" # to upper
-
-        local peer_wg_pub="$(cat "${WT_CONFIG_PATH}/${_peer_wg_pub_file}")"
-
-        if [ "${peer_wg_pub}" == "${config["host_wg_pub"]}" ]
+        if [ "${config["peer_wg_pub_${_peer_name}"]}" == "${config["host_wg_pub"]}" ]
         then
             continue
         fi
 
-        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name}_ALLOWED_IPS"
-
         cat <<EOF
 
 [Peer]
-PublicKey = ${peer_id}
-AllowedIPs = ${!WGQ_PEER_ALLOWED_IPS_VAR_NAME}
+PublicKey = ${config["peer_wg_pub_${_peer_name}"]}
+AllowedIPs = ${config["peer_wg_quick_allowed_ips_${peer_name}"]}
 PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
 EOF
 
-        if [ -f "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" ]
+        if [ -f "${WT_PEER_ENDPOINT_PATH}/${peer_name}" ]
         then
-            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")")
+            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}")
             if [ "${endpoint}" != "" ]
             then
             cat <<EOF
@@ -1141,8 +1123,6 @@ function wg_quick_interface() {
             WGQ_CONFIG_FILE="${WT_EPHEMERAL_PATH}/${WGQ_INTERFACE}.conf"
 
             info "WGQ_INTERFACE=${WGQ_INTERFACE}"
-
-            wg_quick_validate_peers
             ;;
         up)
             info
@@ -1341,7 +1321,6 @@ function wireproxy_interface() {
             fi
             ;;
         reload)
-            local peer_id=""
             info
 
             if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
@@ -1468,9 +1447,9 @@ function wireproxy_interface() {
                     fi
                     ;;
                 peer_endpoint)
-                    local peer="${1}" && shift
+                    local peer_name="${1}" && shift
                     local endpoint="${1}" && shift
-                    info "peer_endpoint $(short "${peer}") ${endpoint:-''}"
+                    info "peer_endpoint ${peer_name} ${endpoint}"
 
                     if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
                     then
@@ -1483,7 +1462,9 @@ function wireproxy_interface() {
             local name="${1}" && shift
             case "${name}" in
                 peer_status)
-                    local peer="${1}" && shift
+                    local peer_name="${1}" && shift
+
+                    local peer="${config["peer_wg_pub_${peer_name}"]}"
 
                     {
                         if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")" ]
@@ -1954,18 +1935,21 @@ function gpg_ephemeral_encryption() {
         encrypt)
             debug
             local data="${1}" && shift
-            local id_list="${@}" && shift
 
-            local recipients
+            if [[ ${#@} -gt 0 ]]
+            then
+                local peer_name="${1}" && shift
+                local peer_recipient="--hidden-recipient ${config["peer_gpg_keyname_${peer_name}"]}"
+            else
+                local peer_recipient=""
+            fi
 
-            printf -v recipients " --hidden-recipient %s@${GPG_DOMAIN_NAME}" ${id_list}
-
-            recipients+=" --hidden-recipient ${config["host_gpg_keyname"]}"
+            local host_recipient="--hidden-recipient ${config["host_gpg_keyname"]}"
 
             {
                 echo "${data}"
             } | {
-                gpg --encrypt ${GPG_OPTIONS} ${recipients} --sign --armor \
+                gpg --encrypt ${GPG_OPTIONS} ${host_recipient} ${peer_recipient} --sign --armor \
                         2>&${WT_LOG_DEBUG}
             } | {
                 base64
@@ -2007,6 +1991,16 @@ function gpg_ephemeral_encryption() {
 
 # totp topic
 
+function totp_token() {
+    read digest
+    # Read the last 4 bits and convert it into an unsigned integer.
+    local start="$(( 0x${digest:(-1)} * 2))"
+    # Read a 32-bit positive integer and take at most six rightmost digits.
+    local token="$(( ((0x${digest:${start}:8}) & 0x7FFFFFFF) % $((10 ** ${TOTP_DIGITS})) ))"
+    # Pad the token number with leading zeros if needed.
+    printf "%0${TOTP_DIGITS}d\n" "${token}"
+}
+
 function totp_interval() {
     {
         cat <<<"$(($(epoch) / ${TOTP_PERIOD}))"
@@ -2019,24 +2013,6 @@ function totp_interval() {
         read hex
         echo -ne "$(sed "s,..,\\\x&,g" <<<"${hex}")"
     }
-}
-
-function totp_secret() {
-    {
-        case "${1}" in
-            publish)
-                base64 -d <<<"${config["host_totp_id"]}"
-                base64 -d <<<"${peer_id}"
-                ;;
-            subscribe)
-                base64 -d <<<"${peer_id}"
-                base64 -d <<<"${config["host_totp_id"]}"
-                ;;
-            *)
-                die "invalid action *${1}*, options: publish, subscribe"
-                ;;
-        esac
-    } | openssl sha256 -binary
 }
 
 function totp_hmac_digest_python_src() {
@@ -2058,19 +2034,33 @@ function totp_hmac_digest_openssl() {
         | sed "s,.* ,,"
 }
 
+function totp_secret() {
+    local action="${1}" && shift
+    local peer_name="${1}" && shift
 
-function totp_digest() {
-    totp_interval | "totp_hmac_digest_${TOTP_HMAC}" <(totp_secret "${1}")
+    {
+        case "${action}" in
+            publish)
+                base64 -d <<<"${config["host_totp_id"]}"
+                base64 -d <<<"${config["peer_totp_id_${peer_name}"]}"
+                ;;
+            subscribe)
+                base64 -d <<<"${config["peer_totp_id_${peer_name}"]}"
+                base64 -d <<<"${config["host_totp_id"]}"
+                ;;
+            *)
+                die "invalid action *${1}*, options: publish, subscribe"
+                ;;
+        esac
+    } | openssl sha256 -binary
 }
 
-function totp_token() {
-    read digest
-    # Read the last 4 bits and convert it into an unsigned integer.
-    local start="$(( 0x${digest:(-1)} * 2))"
-    # Read a 32-bit positive integer and take at most six rightmost digits.
-    local token="$(( ((0x${digest:${start}:8}) & 0x7FFFFFFF) % $((10 ** ${TOTP_DIGITS})) ))"
-    # Pad the token number with leading zeros if needed.
-    printf "%0${TOTP_DIGITS}d\n" "${token}"
+
+function totp_digest() {
+    local action="${1}" && shift
+    local peer_name="${1}" && shift
+
+    totp_interval | "totp_hmac_digest_${TOTP_HMAC}" <(totp_secret "${action}" "${peer_name}")
 }
 
 function totp_topic() {
@@ -2088,16 +2078,10 @@ function totp_topic() {
             TOTP_ALGORITHM="${TOTP_ALGORITHM:-SHA256}"
             TOTP_HMAC="${TOTP_HMAC:-python}"
             ;;
-        publish)
-            local peer_id="${1}" && shift
+        publish|subscribe)
+            local peer_name="${1}" && shift
 
-            totp_digest "${action}" | "${TOTP_TOKEN}"
-            ;;
-        subscribe)
-            local peer_id="${1}" && shift
-
-            totp_digest "${action}" | "${TOTP_TOKEN}"
-            ;;
+            totp_digest "${action}" "${peer_name}" | "${TOTP_TOKEN}"
     esac
 }
 
@@ -2206,13 +2190,14 @@ function wirething() {
             }
             ;;
         up_peer)
-            local peer_id="${1}" && shift
-            info "$(short "${peer_id}")"
+            local peer_name="${1}" && shift
+
+            info "${peer_name}"
 
             local value="${WT_PID}"
 
             {
-                encryption encrypt "${value}" "${peer_id}" 2>&${WT_LOG_DEBUG} \
+                encryption encrypt "${value}" "${peer_name}" 2>&${WT_LOG_DEBUG} \
                     || die "peer could not encrypt data"
             } | {
                 read encrypted_value
@@ -2231,13 +2216,13 @@ function wirething() {
             }
 
             {
-                wirething get peer_endpoint "${peer_id}"
+                wirething get peer_endpoint "${peer_name}"
             } | {
                 read peer_endpoint
 
                 if [ "${peer_endpoint}" != "" ]
                 then
-                    interface set peer_endpoint "${peer_id}" "${peer_endpoint}"
+                    interface set peer_endpoint "${peer_name}" "${peer_endpoint}"
                 else
                     info "peer_endpoint is ${peer_endpoint:-''}"
                 fi
@@ -2259,12 +2244,13 @@ function wirething() {
                     echo "${endpoint}" > "${WT_HOST_ENDPOINT_FILE}"
                     ;;
                 peer_endpoint)
-                    local peer_id="${1}" && shift
+                    local peer_name="${1}" && shift
                     local endpoint="${1}" && shift
-                    info "peer_endpoint $(short "${peer_id}") ${endpoint}"
-                    echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")"
 
-                    interface set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
+                    info "peer_endpoint ${peer_name} ${endpoint}"
+                    echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}"
+
+                    interface set peer_endpoint "${peer_name}" "${endpoint}"
                     ;;
             esac
             ;;
@@ -2282,9 +2268,10 @@ function wirething() {
                     echo "${endpoint}"
                     ;;
                 peer_endpoint)
-                    local peer_id="${1}" && shift
-                    local endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/$(hash_id "${peer_id}")" 2>&${WT_LOG_DEBUG} || echo)"
-                    debug "peer_endpoint $(short "${peer_id}") ${endpoint:-''}"
+                    local peer_name="${1}" && shift
+
+                    local endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}" 2>&${WT_LOG_DEBUG} || echo)"
+                    debug "peer_endpoint ${peer_name} ${endpoint:-''}"
                     echo "${endpoint}"
                     ;;
             esac
@@ -2319,17 +2306,14 @@ function wirething() {
         broadcast_host_endpoint)
             debug
 
-            for _peer_id in ${config["peer_name_list"]}
+            for _peer_name in ${config["peer_name_list"]}
             do
-                wirething publish_host_endpoint "${_peer_id}"
+                wirething publish_host_endpoint "${_peer_name}"
             done
-            #for peer_name in ${config["peer_name_list"]}
-            #do
-            #done
             ;;
         publish_host_endpoint)
             debug
-            local peer_id="${1}" && shift
+            local peer_name="${1}" && shift
 
             {
                 wirething get host_endpoint
@@ -2342,11 +2326,11 @@ function wirething() {
                     info "${host_endpoint}"
 
                     {
-                        topic publish "${peer_id}"
+                        topic publish "${peer_name}"
                     } | {
                         read topic
                         {
-                            encryption encrypt "${host_endpoint}" "${peer_id}"
+                            encryption encrypt "${host_endpoint}" "${peer_name}"
                         } | {
                             read encrypted_host_endpoint
 
@@ -2363,11 +2347,11 @@ function wirething() {
             ;;
         poll_encrypted_host_endpoint)
             debug
-            local peer_id="${1}" && shift
+            local peer_name="${1}" && shift
             local since="${1}" && shift
 
             {
-                topic publish "${peer_id}"
+                topic publish "${peer_name}"
             } | {
                 read topic
                 pubsub poll "${topic}" "${since}"
@@ -2375,11 +2359,11 @@ function wirething() {
             ;;
         poll_encrypted_peer_endpoint)
             debug
-            local peer_id="${1}" && shift
+            local peer_name="${1}" && shift
             local since="${1}" && shift
 
             {
-                topic subscribe "${peer_id}"
+                topic subscribe "${peer_name}"
             } | {
                 read topic
                 pubsub poll "${topic}" "${since}"
@@ -2387,27 +2371,27 @@ function wirething() {
             ;;
         on_new_peer_endpoint)
             debug
-            local peer_id="${1}" && shift
+            local peer_name="${1}" && shift
 
             while read new_peer_endpoint
             do
                 info "${new_peer_endpoint}"
 
-                local current_peer_endpoint="$(wirething get peer_endpoint "${peer_id}")"
+                local current_peer_endpoint="$(wirething get peer_endpoint "${peer_name}")"
 
                 if [[ "${new_peer_endpoint}" != "${current_peer_endpoint}" ]]
                 then
-                    wirething set peer_endpoint "${peer_id}" "${new_peer_endpoint}"
+                    wirething set peer_endpoint "${peer_name}" "${new_peer_endpoint}"
                 fi
             done
             ;;
         ensure_host_endpoint_is_published)
             info
-            local peer_id="${1}" && shift
+            local peer_name="${1}" && shift
             local since="all"
 
             {
-                wirething poll_encrypted_host_endpoint "${peer_id}" "${since}"
+                wirething poll_encrypted_host_endpoint "${peer_name}" "${since}"
             } | {
                 read encrypted_host_endpoint
 
@@ -2437,7 +2421,7 @@ function wirething() {
 
                                 if [ "${published_host_endpoint}" != "${host_endpoint}" ]
                                 then
-                                    wirething publish_host_endpoint "${peer_id}"
+                                    wirething publish_host_endpoint "${peer_name}"
                                 fi
                             }
                         }
@@ -2446,11 +2430,11 @@ function wirething() {
             ;;
         fetch_peer_endpoint)
             debug
-            local peer_id="${1}" && shift
+            local peer_name="${1}" && shift
             local since="${1}" && shift
 
             {
-                wirething poll_encrypted_peer_endpoint "${peer_id}" "${since}"
+                wirething poll_encrypted_peer_endpoint "${peer_name}" "${since}"
             } | {
                 read encrypted_peer_endpoint
 
@@ -2473,7 +2457,7 @@ function wirething() {
                                 echo "${new_peer_endpoint}"
                             fi
                         } | {
-                            wirething on_new_peer_endpoint "${peer_id}"
+                            wirething on_new_peer_endpoint "${peer_name}"
                         }
                 esac
             }
@@ -2561,9 +2545,9 @@ function host_status_usecase() {
 
                     if [ "${status}" == "online" ]
                     then
-                        for _peer_id in ${config["peer_id_list"]}
+                        for _peer_name in ${config["peer_name_list"]}
                         do
-                            if ! wirething ensure_host_endpoint_is_published "${_peer_id}"
+                            if ! wirething ensure_host_endpoint_is_published "${_peer_name}"
                             then
                                 status="offline"
                             fi
@@ -2623,12 +2607,10 @@ function peer_context() {
         set)
             local peer_name="${1}" && shift
 
-            peer_id="${config["peer_id_${peer_name}"]}"
             log_id="${config["peer_log_id_${peer_name}"]}"
             log_name="${config["peer_log_name_${peer_name}"]}"
             ;;
         unset)
-            unset peer_id
             log_id=""
             log_name=""
             ;;
@@ -2722,22 +2704,13 @@ function peer_task() {
     local action="${1}" && shift
 
     case "${action}" in
-        interface_get_peer_status)
-            local peer_name="${1}" && shift
-
-            peer_context set "${peer_name}"
-
-            interface get peer_status "${peer_id}"
-
-            peer_context unset
-            ;;
         fetch_peer_endpoint_since_all)
             local peer_name="${1}" && shift
 
             peer_context set "${peer_name}"
 
             info "${peer_name}"
-            wirething fetch_peer_endpoint "${peer_id}" "all" || true
+            wirething fetch_peer_endpoint "${peer_name}" "all" || true
 
             peer_context unset
             ;;
@@ -2747,7 +2720,7 @@ function peer_task() {
             peer_context set "${peer_name}"
 
             info "${peer_name}"
-            wirething fetch_peer_endpoint "${peer_id}" "${WT_PEER_OFFLINE_FETCH_SINCE}s" || true
+            wirething fetch_peer_endpoint "${peer_name}" "${WT_PEER_OFFLINE_FETCH_SINCE}s" || true
 
             peer_context unset
             ;;
@@ -2757,7 +2730,7 @@ function peer_task() {
             peer_context set "${peer_name}"
 
             info "${peer_name}"
-            wirething ensure_host_endpoint_is_published "${peer_id}" || true
+            wirething ensure_host_endpoint_is_published "${peer_name}" || true
 
             peer_context unset
             ;;
@@ -2832,9 +2805,10 @@ function peer() {
             ;;
         poll_status)
             local peer_name="${1}" && shift
-            local status="$(peer_task interface_get_peer_status "${peer_name}")"
 
             peer_context set "${peer_name}"
+
+            local status="$(interface get peer_status "${peer_name}")"
 
             debug "${peer_name} ${status}"
 
@@ -3046,9 +3020,9 @@ function wirething_main() {
 
             wirething up_host
 
-            for _peer_id in ${config["peer_id_list"]}
+            for _peer_name in ${config["peer_name_list"]}
             do
-                wirething up_peer "${_peer_id}"
+                wirething up_peer "${_peer_name}"
             done
             ;;
         down)
