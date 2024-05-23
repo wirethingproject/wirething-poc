@@ -787,7 +787,7 @@ function env_config() {
                 config["peer_name_list"]+="${peer_name} "
                 config["peer_wg_pub_list"]+="${peer_wg_pub} "
 
-                WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${_peer_name^^}_ALLOWED_IPS"
+                WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name^^}_ALLOWED_IPS"
                 config["peer_wg_quick_allowed_ips_${peer_name}"]="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
             done
 
@@ -1069,13 +1069,13 @@ EOF
 
 [Peer]
 PublicKey = ${config["peer_wg_pub_${_peer_name}"]}
-AllowedIPs = ${config["peer_wg_quick_allowed_ips_${peer_name}"]}
+AllowedIPs = ${config["peer_wg_quick_allowed_ips_${_peer_name}"]}
 PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
 EOF
 
-        if [ -f "${WT_PEER_ENDPOINT_PATH}/${peer_name}" ]
+        if [ -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" ]
         then
-            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}")
+            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}")
             if [ "${endpoint}" != "" ]
             then
             cat <<EOF
