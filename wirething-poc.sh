@@ -579,6 +579,8 @@ EOF
                 gpg)
                     local domain="${1}" && shift
 
+                    local gpg_domain_name="${GPG_DOMAIN_NAME:-wirething.gpg}"
+
                     ({
                         umask 077
 
@@ -587,17 +589,17 @@ EOF
                         {
                             fs_store _get "${domain}" "wg.pub"
                         } | {
-                            read host_id
+                            read host_wg_pub
 
-                            local key_name="${host_id}@wirething.gpg"
+                            local keyname="${host_wg_pub}@${gpg_domain_name}"
 
-                            gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${key_name}" \
+                            gpg --pinentry-mode=loopback  --passphrase "" --yes --quick-generate-key "${keyname}" \
                                 1>&${WT_LOG_DEBUG} 2>&${WT_LOG_DEBUG}
 
-                            gpg --armor --export-secret-keys "${key_name}" 2>&${WT_LOG_DEBUG} \
+                            gpg --armor --export-secret-keys "${keyname}" 2>&${WT_LOG_DEBUG} \
                                 | fs_store _set "${domain}" "gpg.key"
 
-                            gpg --armor --export "${key_name}" 2>&${WT_LOG_DEBUG} \
+                            gpg --armor --export "${keyname}" 2>&${WT_LOG_DEBUG} \
                                 | fs_store _set "${domain}" "gpg.pub"
                         }
 
@@ -734,6 +736,7 @@ function env_config() {
             local config_path="${WT_CONFIG_PATH:?Variable not set}"
             local host_wg_key_file="${WGQ_HOST_PRIVATE_KEY_FILE:?Variable not set}"
             local peer_wg_pub_file_list="${WGQ_PEER_PUBLIC_KEY_FILE_LIST:?Variable not set}"
+            local gpg_domain_name="${GPG_DOMAIN_NAME:-wirething.gpg}"
 
             declare -g -A config
 
@@ -749,7 +752,13 @@ function env_config() {
 
             config["host_name"]="${host_name}"
             config["host_id"]="${host_wg_pub}"
+
+            config["host_log_name"]="${host_name}"
+            config["host_log_id"]="${host_wg_pub}"
+
             config["host_wg_pub"]="${host_wg_pub}"
+            config["host_gpg_keyname"]="${host_wg_pub}@${gpg_domain_name}"
+            config["host_totp_id"]="${host_wg_pub}"
 
             config["peer_name_list"]=""
             config["peer_id_list"]=""
@@ -772,12 +781,18 @@ function env_config() {
                 local peer_name="${peer_wg_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
+                config["peer_id_${peer_name}"]="${peer_wg_pub}"
+
+                config["peer_log_name_${peer_name}"]="${peer_name}"
+                config["peer_log_id_${peer_name}"]="${host_wg_pub}"
+
+                config["peer_wg_pub_${peer_name}"]="${peer_wg_pub}"
+                config["peer_gpg_keyname_${peer_name}"]="${peer_wg_pub}@${gpg_domain_name}"
+                config["peer_totp_id_${peer_name}"]="${peer_wg_pub}"
+
                 config["peer_name_list"]+="${peer_name} "
                 config["peer_id_list"]+="${peer_wg_pub} "
                 config["peer_wg_pub_list"]+="${peer_wg_pub} "
-
-                config["peer_id_${peer_name}"]="${peer_wg_pub}"
-                config["peer_wg_pub_${peer_name}"]="${peer_wg_pub}"
             done
 
             config["peer_name_list"]="${config["peer_name_list"]% }"
@@ -915,10 +930,6 @@ function wg_interface() {
         get)
             name="${1}" && shift
             case "${name}" in
-                hostname)
-                    local id="${1}" && shift
-                    echo "${id}"
-                    ;;
                 peer_address)
                     local peer="${1}" && shift
 
@@ -1025,32 +1036,9 @@ function wg_interface() {
 # wg quick interface
 
 function wg_quick_validate_peers() {
-    if [ ! -f "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" ]
-    then
-        die "file WGQ_HOST_PRIVATE_KEY_FILE not found *${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}*"
-    fi
-
-    local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
-
-    for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+    for peer_name in ${config["peer_name_list"]}
     do
-        if [ ! -f "${WT_CONFIG_PATH}/${peer_pub_file}" ]
-        then
-            die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${WT_CONFIG_PATH}/${peer_pub_file}*"
-        fi
-
-        local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
-
-        if [ "${peer_id}" == "${host_id}" ]
-        then
-            continue
-        fi
-
-        local peer_name="${peer_pub_file##*/}" # remove path
-        peer_name="${peer_name%.pub}" # remove extension
-        peer_name="$(to_upper ${peer_name})" # to upper
-
-        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name}_ALLOWED_IPS"
+        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name^^}_ALLOWED_IPS"
         local value="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
     done
 }
@@ -1085,8 +1073,6 @@ PrivateKey = $(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}")
 EOF
     fi
 
-    local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
-
     for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
         local peer_name="${peer_pub_file##*/}" # remove path
@@ -1095,7 +1081,7 @@ EOF
 
         local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
 
-        if [ "${peer_id}" == "${host_id}" ]
+        if [ "${peer_id}" == "${config["host_wg_pub"]}" ]
         then
             continue
         fi
@@ -1162,24 +1148,6 @@ function wg_quick_interface() {
             info "WGQ_INTERFACE=${WGQ_INTERFACE}"
 
             wg_quick_validate_peers
-
-            local host_id="$(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" | wg pubkey)"
-            kv set "wg_quick_hostname" "${host_id}" "${WGQ_HOSTNAME}"
-
-            for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
-            do
-                local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
-
-                if [ "${peer_id}" == "${host_id}" ]
-                then
-                    continue
-                fi
-
-                local peer_name="${peer_pub_file##*/}" # remove path
-                peer_name="${peer_name%.pub}" # remove extension
-
-                kv set "wg_quick_hostname" "${peer_id}" "${peer_name}"
-            done
             ;;
         up)
             info
@@ -1233,10 +1201,6 @@ function wg_quick_interface() {
         get)
             local name="${1}" && shift
             case "${name}" in
-                hostname)
-                    local id="${1}" && shift
-                    kv get "wg_quick_hostname" "${id}"
-                    ;;
                 *)
                     wg_interface "${action}" "${name}" ${@}
             esac
@@ -1410,7 +1374,7 @@ function wireproxy_interface() {
         loop)
             info
 
-            id_list="${config["host_id"]} ${config["peer_id_list"]}"
+            id_list="${config["host_wg_pub"]} ${config["peer_wg_pub_list"]}"
             id_list="${id_list// /\\n}"
 
             {
@@ -1606,9 +1570,6 @@ function wireproxy_interface() {
                         debug "handshake_timeout $(short "${peer}") ${result:-''}"
                         echo "${result}"
                     }
-                    ;;
-                hostname)
-                    wg_quick_interface "${action}" "${name}" ${@}
                     ;;
             esac
             ;;
@@ -2002,14 +1963,16 @@ function gpg_ephemeral_encryption() {
             local data="${1}" && shift
             local id_list="${@}" && shift
 
-            local recipient
+            local recipients
 
-            printf -v recipient " --hidden-recipient %s@${GPG_DOMAIN_NAME}" "${config["host_id"]}" ${id_list}
+            printf -v recipients " --hidden-recipient %s@${GPG_DOMAIN_NAME}" ${id_list}
+
+            recipients+=" --hidden-recipient ${config["host_gpg_keyname"]}"
 
             {
                 echo "${data}"
             } | {
-                gpg --encrypt ${GPG_OPTIONS} ${recipient} --sign --armor \
+                gpg --encrypt ${GPG_OPTIONS} ${recipients} --sign --armor \
                         2>&${WT_LOG_DEBUG}
             } | {
                 base64
@@ -2019,8 +1982,6 @@ function gpg_ephemeral_encryption() {
             debug
             local data="${1}" && shift
 
-            id="${config["host_id"]}"
-
             {
                 echo "${data}"
             } | {
@@ -2029,7 +1990,7 @@ function gpg_ephemeral_encryption() {
                 capture start
 
                 gpg --decrypt ${GPG_OPTIONS} \
-                    --local-user "${id}@${GPG_DOMAIN_NAME}" \
+                    --local-user "${config["host_gpg_keyname"]}" \
                     2>&${capture[1]} \
                     || error "gpg returns ${?}"
 
@@ -2071,12 +2032,12 @@ function totp_secret() {
     {
         case "${1}" in
             publish)
-                base64 -d <<<"${config["host_id"]}"
+                base64 -d <<<"${config["host_totp_id"]}"
                 base64 -d <<<"${peer_id}"
                 ;;
             subscribe)
                 base64 -d <<<"${peer_id}"
-                base64 -d <<<"${config["host_id"]}"
+                base64 -d <<<"${config["host_totp_id"]}"
                 ;;
             *)
                 die "invalid action *${1}*, options: publish, subscribe"
@@ -2545,8 +2506,8 @@ function host_status_usecase() {
             WT_HOST_OFFLINE_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/host_status_usecase.pid"
             ;;
         start)
-            local log_id="${config["host_id"]}"
-            local log_name="${config["host_name"]}"
+            local log_id="${config["host_log_id"]}"
+            local log_name="${config["host_log_name"]}"
 
             info "${config["host_name"]}"
 
@@ -2670,8 +2631,8 @@ function peer_context() {
             local peer_name="${1}" && shift
 
             peer_id="${config["peer_id_${peer_name}"]}"
-            log_id="${config["peer_id_${peer_name}"]}"
-            log_name="${peer_name}"
+            log_id="${config["peer_log_id_${peer_name}"]}"
+            log_name="${config["peer_log_name_${peer_name}"]}"
             ;;
         unset)
             unset peer_id
@@ -2939,7 +2900,6 @@ function peer() {
 # wirething main
 
 wt_type_list=(
-    kv
     interface
     punch
     pubsub
