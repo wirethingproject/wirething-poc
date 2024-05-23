@@ -844,13 +844,13 @@ function tasks() {
             _tasks["${name}"]="${frequency} ${start} ${stop} ${task}"
             _tasks_next["${name}"]="${start}"
 
-            debug "name=${name} now=${now} next=${_tasks_next["${name}"]} f/s/s/t=${_tasks["${name}"]}"
+            debug "name=${name} now=${now} next=${_tasks_next["${name}"]} frequency/start/stop/task=${_tasks["${name}"]}"
             ;;
         unregister)
             shift # name
             local name="${1}" && shift
 
-            debug "name=${name} now=$(epoch) next=${_tasks_next["${name}"]} f/s/s/t=${_tasks["${name}"]}"
+            debug "name=${name} now=$(epoch) next=${_tasks_next["${name}"]} frequency/start/stop/task=${_tasks["${name}"]}"
 
             unset _tasks["${name}"]
             unset _tasks_next["${name}"]
