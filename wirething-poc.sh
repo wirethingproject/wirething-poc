@@ -692,8 +692,8 @@ function json_kv() {
 
             local json="{"
 
-            for key in "${!_kv[@]}"; do
-                json+="\n  \"${key}\":\"${_kv[${key}]}\","
+            for _key in "${!_kv[@]}"; do
+                json+="\n  \"${_key}\":\"${_kv[${_key}]}\","
             done
 
             json="${json%,}"
@@ -761,21 +761,21 @@ function env_config() {
             config["peer_id_list"]=""
             config["peer_wg_pub_list"]=""
 
-            for peer_wg_pub_file in ${peer_wg_pub_file_list}
+            for _peer_wg_pub_file in ${peer_wg_pub_file_list}
             do
-                if [ ! -f "${config_path}/${peer_wg_pub_file}" ]
+                if [ ! -f "${config_path}/${_peer_wg_pub_file}" ]
                 then
-                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${config_path}/${peer_wg_pub_file}*"
+                    die "file in WGQ_PEER_PUBLIC_KEY_FILE_LIST not found *${config_path}/${_peer_wg_pub_file}*"
                 fi
 
-                local peer_wg_pub="$(cat "${config_path}/${peer_wg_pub_file}")"
+                local peer_wg_pub="$(cat "${config_path}/${_peer_wg_pub_file}")"
 
                 if [ "${peer_wg_pub}" == "${host_wg_pub}" ]
                 then
                     continue
                 fi
 
-                local peer_name="${peer_wg_pub_file##*/}" # remove path
+                local peer_name="${_peer_wg_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
                 config["peer_id_${peer_name}"]="${peer_wg_pub}"
@@ -856,20 +856,20 @@ function tasks() {
             unset _tasks_next["${name}"]
             ;;
         run)
-            local name frequency start stop task next now
+            local _name frequency start stop task next now
 
-            for name in "${!_tasks[@]}"
+            for _name in "${!_tasks[@]}"
             do
-                read frequency start stop task <<<"${_tasks[${name}]}"
-                read next <<<"${_tasks_next[${name}]}"
+                read frequency start stop task <<<"${_tasks[${_name}]}"
+                read next <<<"${_tasks_next[${_name}]}"
                 read now <<<"$(epoch)"
 
                 if [[ ${now} -ge ${start} && ${now} -ge ${next} && ${now} -lt ${stop} ]]
                 then
-                    # debug "name=${name} frequency=${frequency} start=${start} stop=${stop} next=${next} now=${now}"
-                    ## debug "name=${name} task='${task}'"
+                    # debug "_name=${_name} frequency=${frequency} start=${start} stop=${stop} next=${next} now=${now}"
+                    ## debug "_name=${_name} task='${task}'"
 
-                    _tasks_next["${name}"]="$((${now} + ${frequency}))"
+                    _tasks_next["${_name}"]="$((${now} + ${frequency}))"
                     ${task} || error "task '${task}' returns ${?}"
                 fi
             done
@@ -1031,11 +1031,9 @@ function wg_interface() {
 # wg quick interface
 
 function wg_quick_validate_peers() {
-    local peer_name
-
-    for peer_name in ${config["peer_name_list"]}
+    for _peer_name in ${config["peer_name_list"]}
     do
-        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name^^}_ALLOWED_IPS"
+        WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${_peer_name^^}_ALLOWED_IPS"
         local value="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
     done
 }
@@ -1070,15 +1068,15 @@ PrivateKey = $(cat "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}")
 EOF
     fi
 
-    for peer_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
+    for _peer_wg_pub_file in ${WGQ_PEER_PUBLIC_KEY_FILE_LIST}
     do
-        local peer_name="${peer_pub_file##*/}" # remove path
+        local peer_name="${_peer_wg_pub_file##*/}" # remove path
         peer_name="${peer_name%.pub}" # remove extension
         peer_name="$(to_upper ${peer_name})" # to upper
 
-        local peer_id="$(cat "${WT_CONFIG_PATH}/${peer_pub_file}")"
+        local peer_wg_pub="$(cat "${WT_CONFIG_PATH}/${_peer_wg_pub_file}")"
 
-        if [ "${peer_id}" == "${config["host_wg_pub"]}" ]
+        if [ "${peer_wg_pub}" == "${config["host_wg_pub"]}" ]
         then
             continue
         fi
@@ -1234,20 +1232,20 @@ BindAddress = ${WIREPROXY_HTTP_BIND}
 EOF
     fi
 
-    for port in ${WIREPROXY_EXPOSE_PORT_LIST}
+    for _port in ${WIREPROXY_EXPOSE_PORT_LIST}
     do
         cat <<EOF
 
 [TCPServerTunnel]
-ListenPort = ${port}
-Target = 127.0.0.1:${port}
+ListenPort = ${_port}
+Target = 127.0.0.1:${_port}
 EOF
     done
 
-    for forward in ${WIREPROXY_FORWARD_PORT_LIST}
+    for _forward in ${WIREPROXY_FORWARD_PORT_LIST}
     do
         {
-            echo "${forward/:/ }"
+            echo "${_forward/:/ }"
         } | {
             read local_port remote_endpoint
             cat <<EOF
@@ -1738,21 +1736,21 @@ function stun_punch() {
 
             readarray -u "${STUN_UDP_PROC[0]}" -t stun_buffer
 
-            for line in "${stun_buffer[@]}"
+            for _line in "${stun_buffer[@]}"
             do
-                echo "${line}" | raw_log stunclient debug
+                echo "${_line}" | raw_log stunclient debug
 
-                case "${line}" in
+                case "${_line}" in
                     "Binding test: success")
                         ;;
                     "Local address: "*)
-                        STUN_LOCAL_PORT="${line/*:/}"
+                        STUN_LOCAL_PORT="${_line/*:/}"
                         ;;
                     "Mapped address: "*)
-                        STUN_REMOTE_ENDPOINT="${line/*: /}"
+                        STUN_REMOTE_ENDPOINT="${_line/*: /}"
                         ;;
                     *)
-                        error "${line}"
+                        error "${_line}"
                         return 1
                 esac
             done
@@ -1920,11 +1918,11 @@ function gpg_ephemeral_encryption() {
             GPG_OPTIONS="${GPG_OPTIONS:---disable-dirmngr --no-auto-key-locate --batch --no}"
             GPG_AGENT_CONF="${GPG_AGENT_CONF:-disable-scdaemon\nextra-socket /dev/null\nbrowser-socket /dev/null\n}" # Disabling scdaemon (smart card daemon) make gpg do not try to use your Yubikey
 
-            for gpg_file in ${GPG_FILE_LIST}
+            for _gpg_file in ${GPG_FILE_LIST}
             do
-                if [ ! -f "${WT_CONFIG_PATH}/${gpg_file}" ]
+                if [ ! -f "${WT_CONFIG_PATH}/${_gpg_file}" ]
                 then
-                    die "file in GPG_FILE_LIST not found *${WT_CONFIG_PATH}/${gpg_file}*"
+                    die "file in GPG_FILE_LIST not found *${WT_CONFIG_PATH}/${_gpg_file}*"
                 fi
             done
             ;;
@@ -1935,10 +1933,10 @@ function gpg_ephemeral_encryption() {
 
             echo -ne "${GPG_AGENT_CONF}" > "${GNUPGHOME}/gpg-agent.conf"
 
-            for gpg_file in ${GPG_FILE_LIST}
+            for _gpg_file in ${GPG_FILE_LIST}
             do
-                gpg ${GPG_OPTIONS} --import "${WT_CONFIG_PATH}/${gpg_file}" 2>&${WT_LOG_DEBUG}
-                gpg ${GPG_OPTIONS} --show-keys --with-colons "${WT_CONFIG_PATH}/${gpg_file}" 2>&${WT_LOG_DEBUG} \
+                gpg ${GPG_OPTIONS} --import "${WT_CONFIG_PATH}/${_gpg_file}" 2>&${WT_LOG_DEBUG}
+                gpg ${GPG_OPTIONS} --show-keys --with-colons "${WT_CONFIG_PATH}/${_gpg_file}" 2>&${WT_LOG_DEBUG} \
                     | grep "fpr" | cut -f "10-" -d ":" | sed "s,:,:6:," \
                     | gpg ${GPG_OPTIONS} --import-ownertrust 2>&${WT_LOG_DEBUG}
             done
@@ -2321,7 +2319,7 @@ function wirething() {
         broadcast_host_endpoint)
             debug
 
-            for _peer_id in ${config["peer_id_list"]}
+            for _peer_id in ${config["peer_name_list"]}
             do
                 wirething publish_host_endpoint "${_peer_id}"
             done
@@ -2818,20 +2816,18 @@ function peer() {
             ;;
         start)
             info
-            local peer_name
 
-            for peer_name in ${config["peer_name_list"]}
+            for _peer_name in ${config["peer_name_list"]}
             do
-                peer_state start_peer "${peer_name}"
+                peer_state start_peer "${_peer_name}"
             done
             ;;
         stop)
             info
-            local peer_name
 
-            for peer_name in ${config["peer_name_list"]}
+            for _peer_name in ${config["peer_name_list"]}
             do
-                peer_state stop_peer "${peer_name}"
+                peer_state stop_peer "${_peer_name}"
             done
             ;;
         poll_status)
@@ -2882,13 +2878,11 @@ function peer() {
             esac
             ;;
         run)
-            local peer_name
-
-            for peer_name in ${config["peer_name_list"]}
+            for _peer_name in ${config["peer_name_list"]}
             do
-                peer_context set "${peer_name}"
+                peer_context set "${_peer_name}"
 
-                peer_state transition "${peer_name}"
+                peer_state transition "${_peer_name}"
 
                 peer_context unset
             done
@@ -2922,27 +2916,27 @@ wt_others_list=(
 )
 
 function wt_get_alias() {
-    alias ${wt_type} | cut -f 2 -d "'"
+    alias ${_wt_type} | cut -f 2 -d "'"
 }
 
 function wt_type_for_each() {
-    for wt_type in "${wt_type_list[@]}"
+    for _wt_type in "${wt_type_list[@]}"
     do
-        "$(wt_get_alias "${wt_type}")" "${1}"
+        "$(wt_get_alias "${_wt_type}")" "${1}"
     done
 }
 
 function wt_optional_for_each() {
-    for wt_optional in "${wt_optional_list[@]}"
+    for _wt_optional in "${wt_optional_list[@]}"
     do
-        "${wt_optional}" "${1}"
+        "${_wt_optional}" "${1}"
     done
 }
 
 function wt_others_for_each() {
-    for wt_other in "${wt_others_list[@]}"
+    for _wt_other in "${wt_others_list[@]}"
     do
-        "${wt_other}" "${1}"
+        "${_wt_other}" "${1}"
     done
 }
 
@@ -3032,9 +3026,9 @@ function wirething_main() {
             return 0
             ;;
         trap)
-            for signal in EXIT ERR SIGTERM
+            for _signal in EXIT ERR SIGTERM
             do
-                trap "wirething_main signal \"${signal}\" \"${?:-null}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\"" "${signal}"
+                trap "wirething_main signal \"${_signal}\" \"${?:-null}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\"" "${_signal}"
             done
             ;;
         up)
