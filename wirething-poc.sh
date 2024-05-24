@@ -99,18 +99,6 @@ function utils() {
 
 utils _init
 
-function to_upper() {
-    echo ${1} | tr "[:lower:]" "[:upper:]"
-}
-
-function to_lower() {
-    echo ${1} | tr "[:upper:]" "[:lower:]"
-}
-
-function hash_id() {
-    echo "${1}" | openssl sha256 | sed "s,.* ,,"
-}
-
 function options() {
     set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
 }
@@ -493,16 +481,16 @@ EOF
 
                     fs_store _get "${domain}" "peers/${peer_file}" \
                         | grep "^WT_PEER_.*=" \
-                        | sed "s,^WT_PEER,WT_PEER_$(to_upper ${hostname}),"
+                        | sed "s,^WT_PEER,WT_PEER_${hostname^^},"
 
                     cat <<EOF
-WGQ_PEER_$(to_upper "${hostname}")_ALLOWED_IPS="\${WT_PEER_$(to_upper "${hostname}")_ROUTE_LIST}"
+WGQ_PEER_${hostname^^}_ALLOWED_IPS="\${WT_PEER_${hostname^^}_ROUTE_LIST}"
 EOF
 
                 })
 
                 WGQ_PEER_PUBLIC_KEY_FILE_LIST+=" _env/${hostname}.pub"
-                WGQ_PEER_PUBLIC_KEY_VAR_NAME="WT_PEER_$(to_upper "${hostname}")_ID"
+                WGQ_PEER_PUBLIC_KEY_VAR_NAME="WT_PEER_${hostname^^}_ID"
                 echo "${!WGQ_PEER_PUBLIC_KEY_VAR_NAME}" \
                     | fs_store _set "${domain}" "_env/${hostname}.pub"
 
@@ -1976,7 +1964,7 @@ function totp_hmac_digest_python_src() {
 import sys, hmac, hashlib
 
 with open(sys.argv[1], mode="rb") as key:
-    h = hmac.new(key.read(), sys.stdin.buffer.read(), hashlib.$(to_lower "${TOTP_ALGORITHM}"))
+    h = hmac.new(key.read(), sys.stdin.buffer.read(), hashlib.${TOTP_ALGORITHM,,})
     print(h.hexdigest())
 EOF
 }
