@@ -1261,9 +1261,31 @@ function wireproxy_interface() {
             fi
 
             wg_quick_interface init
+
+            declare -g -A wireproxy_name_table
+
             ;;
         up)
             info
+
+            local wg_pub="${config["host_wg_pub"]}"
+            local index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
+            wireproxy_name_table["${index}"]="${config["host_name"]}"
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                wg_pub="${config["peer_wg_pub_${_peer_name}"]}"
+                index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
+                wireproxy_name_table["${index}"]="${_peer_name}"
+            done
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}" ]
+                then
+                    echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}"
+                fi
+            done
 
             wireproxy_interface start
             ;;
@@ -1316,19 +1338,6 @@ function wireproxy_interface() {
             ;;
         loop)
             info
-
-            declare -A wireproxy_name_table
-
-            local wg_pub="${config["host_wg_pub"]}"
-            local index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
-            wireproxy_name_table["${index}"]="${config["host_name"]}"
-
-            for _peer_name in ${config["peer_name_list"]}
-            do
-                wg_pub="${config["peer_wg_pub_${_peer_name}"]}"
-                index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
-                wireproxy_name_table["${index}"]="${_peer_name}"
-            done
 
             {
                 while true
@@ -1444,11 +1453,6 @@ function wireproxy_interface() {
                     local peer_name="${1}" && shift
 
                     {
-                        if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}" ]
-                        then
-                            echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
-                        fi
-
                         cat "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
                     } | {
                         read last_keepalive
@@ -2095,6 +2099,11 @@ function wirething() {
             then
                 echo "" > "${WT_HOST_ENDPOINT_FILE}"
             fi
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                echo "127.0.0.1:10000" > "${WT_PEER_ENDPOINT_PATH}/${_peer_name}"
+            done
             ;;
         up_host)
             info "${config["host_name"]}"
