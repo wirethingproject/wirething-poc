@@ -405,9 +405,9 @@ function fs_store() {
             case "${subaction}" in
                 address)
                     local domain="${1:?Missing domain param}" && shift
-                    local peer="${1:?Missing peer param}" && shift
+                    local peer_name="${1:?Missing peer param}" && shift
 
-                    fs_store _get "${domain}" "peers/${peer}.peer" \
+                    fs_store _get "${domain}" "peers/${peer_name}.peer" \
                             | grep "^WT_PEER_ADDRESS=" \
                             | sed 's,.*"\(.*\)",\1,'
                     ;;
