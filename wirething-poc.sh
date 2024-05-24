@@ -742,7 +742,7 @@ function env_config() {
             config["host_log_name"]="${host_name}"
             config["host_log_id"]="${host_wg_pub}"
             config["host_wg_pub"]="${host_wg_pub}"
-            config["host_gpg_keyname"]="${host_wg_pub}@${gpg_domain_name}"
+            config["host_gpg_id"]="${host_wg_pub}@${gpg_domain_name}"
             config["host_totp_id"]="${host_wg_pub}"
 
             config["peer_name_list"]=""
@@ -769,7 +769,7 @@ function env_config() {
                 config["peer_log_id_${peer_name}"]="${peer_wg_pub}"
 
                 config["peer_wg_pub_${peer_name}"]="${peer_wg_pub}"
-                config["peer_gpg_keyname_${peer_name}"]="${peer_wg_pub}@${gpg_domain_name}"
+                config["peer_gpg_id_${peer_name}"]="${peer_wg_pub}@${gpg_domain_name}"
                 config["peer_totp_id_${peer_name}"]="${peer_wg_pub}"
 
                 config["peer_name_list"]+="${peer_name} "
@@ -1883,12 +1883,12 @@ function gpg_ephemeral_encryption() {
             if [[ ${#@} -gt 0 ]]
             then
                 local peer_name="${1}" && shift
-                local peer_recipient="--hidden-recipient ${config["peer_gpg_keyname_${peer_name}"]}"
+                local peer_recipient="--hidden-recipient ${config["peer_gpg_id_${peer_name}"]}"
             else
                 local peer_recipient=""
             fi
 
-            local host_recipient="--hidden-recipient ${config["host_gpg_keyname"]}"
+            local host_recipient="--hidden-recipient ${config["host_gpg_id"]}"
 
             {
                 echo "${data}"
@@ -1910,8 +1910,10 @@ function gpg_ephemeral_encryption() {
             } | {
                 capture start
 
+                debug "gpg --decrypt ${GPG_OPTIONS} --local-user ${config["host_gpg_id"]}"
+
                 gpg --decrypt ${GPG_OPTIONS} \
-                    --local-user "${config["host_gpg_keyname"]}" \
+                    --local-user "${config["host_gpg_id"]}" \
                     2>&${capture[1]} \
                     || error "gpg returns ${?}"
 
