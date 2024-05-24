@@ -2631,7 +2631,7 @@ function peer_state() {
 
             local new_event="${_peer_event_transitions["${transition}"]}"
 
-            peer on_event "${peer_name}" "${new_event}"
+            peer on_event "${new_event}" "${peer_name}"
 
             local new_status="${_peer_status_transitions["${transition}"]}"
 
@@ -2768,8 +2768,8 @@ function peer() {
             peer_context unset
             ;;
         on_event)
-            local peer_name="${1}" && shift
             local new_event="${1}" && shift
+            local peer_name="${1}" && shift
 
             case "${new_event}" in
                 on_peer_start)
