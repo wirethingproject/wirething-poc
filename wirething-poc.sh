@@ -975,37 +975,6 @@ function wg_interface() {
                         echo "${result}"
                     }
                     ;;
-                latest_handshake)
-                    local peer="${1}" && shift
-
-                    {
-                        wg show "${WG_INTERFACE}" latest-handshakes
-                    } | {
-                        grep "${peer/latest/}" | cut -f 2 | sort -n | tail -n 1
-                    } | {
-                        read handshake
-                        debug "latest_handshake $(short "${peer}") ${handshake:-''}"
-                        echo "${handshake}"
-                    }
-                    ;;
-                handshake_timeouted)
-                    local peer="${1}" && shift
-
-                    local last_handshake="$(wg_interface get latest_handshake "${peer}")"
-                    local handshake_delta="$(($(epoch) - ${last_handshake}))"
-
-                    local result
-
-                    if [[ ${handshake_delta} -lt ${WG_HANDSHAKE_TIMEOUT} ]]
-                    then
-                        result="false"
-                    else
-                        result="true"
-                    fi
-
-                    debug "handshake_timeouted $(short "${peer}") ${result:-''}"
-                    echo "${result}"
-                    ;;
             esac
             ;;
         status)
@@ -1525,31 +1494,6 @@ function wireproxy_interface() {
                         fi
 
                         debug "host_status ${result}"
-                        echo "${result}"
-                    }
-                    ;;
-                handshake_timeouted)
-                    local peer="${1}" && shift
-
-                    {
-                        echo 0
-                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/"* || true
-                    }  | sort -n | tail -n 1 | {
-                        read last_keepalive
-
-                        local keepalive_delta="$(($(epoch) - ${last_keepalive}))"
-
-                        debug "last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HANDSHAKE_TIMEOUT}"
-                        local result
-
-                        if [[ ${keepalive_delta} -lt ${WIREPROXY_HANDSHAKE_TIMEOUT} ]]
-                        then
-                            result="false"
-                        else
-                            result="true"
-                        fi
-
-                        debug "handshake_timeout $(short "${peer}") ${result:-''}"
                         echo "${result}"
                     }
                     ;;
