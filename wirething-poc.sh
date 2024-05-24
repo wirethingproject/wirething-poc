@@ -1348,8 +1348,18 @@ function wireproxy_interface() {
         loop)
             info
 
-            id_list="${config["host_wg_pub"]} ${config["peer_wg_pub_list"]}"
-            id_list="${id_list// /\\n}"
+            declare -A wireproxy_name_table
+
+            local wg_pub="${config["host_wg_pub"]}"
+            local index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
+            wireproxy_name_table["${index}"]="${config["host_name"]}"
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                wg_pub="${config["peer_wg_pub_${_peer_name}"]}"
+                index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
+                wireproxy_name_table["${index}"]="${_peer_name}"
+            done
 
             {
                 while true
@@ -1413,21 +1423,21 @@ function wireproxy_interface() {
                         esac
                         continue
                     else
-                        local peer_regex="$(echo "${line}" | sed "s,.*peer(\(.*\)…\(.*\)) - .*,\1.*\2=,")"
-                        local id="$(echo -e "${id_list}" | grep "${peer_regex}" || true)"
+                        local index="$(echo "${line}" | grep -o " peer(.*) - ")"
+                        local peer_name="${wireproxy_name_table["${index}"]}"
 
-                        if [ "${id}" == "" ]
+                        if [ "${peer_name}" == "" ]
                         then
-                            error "regex=${peer_regex:=''} id="${id:=''}" peer not found: ${line}"
+                            error "peer_name="${peer_name:=''}" peer not found: ${line}"
                             continue
                         fi
 
                         case "${line}" in
                             *"Receiving keepalive packet")
-                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
+                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
                                 ;;
                             *"Received handshake response")
-                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${id}")"
+                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
                                 ;;
                         esac
                     fi
@@ -1464,15 +1474,13 @@ function wireproxy_interface() {
                 peer_status)
                     local peer_name="${1}" && shift
 
-                    local peer="${config["peer_wg_pub_${peer_name}"]}"
-
                     {
-                        if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")" ]
+                        if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}" ]
                         then
-                            echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")"
+                            echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
                         fi
 
-                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/$(hash_id "${peer}")"
+                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
                     } | {
                         read last_keepalive
 
