@@ -1626,14 +1626,14 @@ function stun_punch() {
                 read port < <(stun_punch get port)
                 read endpoint < <(stun_punch get endpoint)
 
+                stun_punch close
+
                 debug "stun *${port}* *${endpoint}*"
 
                 if [[ "${host_port}" == "${port}" && "${host_endpoint}" == "${endpoint}" ]]
                 then
                     result="online"
                 fi
-
-                stun_punch close
             else
                 debug "stun ** **"
             fi
@@ -2233,24 +2233,19 @@ function wirething() {
 
             if punch open
             then
-                {
-                    punch get port
-                    punch get endpoint
-                } | {
-                    read host_port
-                    read host_endpoint
+                read host_port < <(punch get port)
+                read host_endpoint < <(punch get endpoint)
 
-                    if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
-                    then
-                        wirething set host_port "${host_port}"
-                        wirething set host_endpoint "${host_endpoint}"
-                    else
-                        error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
-                        punch close
-                        return 1
-                    fi
-                }
                 punch close
+
+                if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
+                then
+                    wirething set host_port "${host_port}"
+                    wirething set host_endpoint "${host_endpoint}"
+                else
+                    error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
+                    return 1
+                fi
             else
                 return 1
             fi
