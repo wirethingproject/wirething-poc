@@ -2231,17 +2231,19 @@ function wirething() {
         punch_host_endpoint)
             debug
 
+            local host_endpoint host_port
+
             if punch open
             then
-                read host_port < <(punch get port)
                 read host_endpoint < <(punch get endpoint)
+                read host_port < <(punch get port)
 
                 punch close
 
                 if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
                 then
-                    wirething set host_port "${host_port}"
                     wirething set host_endpoint "${host_endpoint}"
+                    wirething set host_port "${host_port}"
                 else
                     error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
                     return 1
@@ -2528,20 +2530,27 @@ function host_task() {
                 read host_endpoint < <(wirething get host_endpoint)
                 read host_port < <(wirething get host_port)
 
-                wirething set host_port "0"
-
-                if [[ "${host_port}" != "0" && "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]]
+                local new_punch="failed"
+                if wirething punch_host_endpoint
                 then
+                    new_punch="success"
+                fi
+
+                if [[ "${host_port}" != "0" && "${host_port}" != "" && "${host_endpoint}" != "" &&
+                    "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]]
+                then
+                    wirething set host_endpoint "${host_endpoint}"
                     wirething set host_port "${host_port}"
                 else
                     info "punch status: offline"
                     status="offline"
 
-                    if wirething punch_host_endpoint
+                    if [ "${new_punch}" == "success" ]
                     then
                         wirething broadcast_host_endpoint
                         status="online"
                     else
+                        wirething set host_endpoint "${host_endpoint}"
                         wirething set host_port "${host_port}"
                     fi
                 fi
