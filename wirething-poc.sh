@@ -794,7 +794,7 @@ alias config="env_config"
 
 WT_CONFIG_TYPE="${WT_CONFIG_TYPE:-env}"
 alias config="${WT_CONFIG_TYPE}_config"
-config ""        || die "invalid WT_KVWT_CONFIG_TYPE_TYPE *${WT_CONFIG_TYPE}*, options: $(options config)"
+config ""        || die "invalid WT_CONFIG_TYPE *${WT_CONFIG_TYPE}*, options: $(options config)"
 
 # tasks
 
