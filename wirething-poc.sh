@@ -1512,6 +1512,7 @@ function udphole_punch() {
             UDPHOLE_HOSTNAME="${UDPHOLE_HOSTNAME:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
             UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             UDPHOLE_READ_TIMEOUT="${UDPHOLE_READ_TIMEOUT:-10}" # 10 seconds
+            UDPHOLE_PUNCH_PID="${WT_PID}"
             ;;
         status)
             local host_port="${1}" && shift
@@ -1555,7 +1556,7 @@ function udphole_punch() {
             case "${name}" in
                 port)
                     {
-                        udp port ${UDPHOLE_HOSTNAME} ${UDPHOLE_PORT} ${PUNCH_PID}
+                        udp port ${UDPHOLE_HOSTNAME} ${UDPHOLE_PORT} ${UDPHOLE_PUNCH_PID}
                     } | {
                         read -t "${UDPHOLE_READ_TIMEOUT}" port
                         if [[ ${?} -lt 128 ]]
@@ -2418,7 +2419,177 @@ function wirething() {
 
 # host status usecase
 
-function host_status_usecase() {
+function host_context() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        set)
+            log_id="${config["host_log_id"]}"
+            log_name="${config["host_log_name"]}"
+            ;;
+        unset)
+            log_id=""
+            log_name=""
+            ;;
+    esac
+}
+
+function host_state() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            info
+
+            declare -g -A _host_state
+
+            declare -g -A _host_event_transitions=(
+                ["host_start_start"]="on_host_start"
+                ["host_wait_wait"]=""
+                ["host_wait_offline"]="on_host_offline"
+                ["host_wait_online"]=""
+                ["host_online_online"]=""
+                ["host_online_offline"]="on_host_offline"
+                ["host_offline_offline"]=""
+                ["host_offline_online"]="on_host_online"
+                ["host_stop_stop"]="on_host_stop"
+            )
+
+            declare -g -A _host_status_transitions=(
+                ["host_start_start"]=""
+                ["host_wait_wait"]=""
+                ["host_wait_offline"]="offline"
+                ["host_wait_online"]="online"
+                ["host_online_online"]=""
+                ["host_online_offline"]="offline"
+                ["host_offline_offline"]=""
+                ["host_offline_online"]="online"
+                ["host_stop_stop"]=""
+            )
+            ;;
+        start_host)
+            info
+
+            _host_state["current_status"]="start"
+            _host_state["polled_status"]="start"
+
+            host_state transition
+
+            _host_state["current_status"]="wait"
+            _host_state["polled_status"]="wait"
+            ;;
+        stop_host)
+            info
+
+            _host_state["current_status"]="stop"
+            _host_state["polled_status"]="stop"
+
+            host_state transition
+            ;;
+        transition)
+            local host_name="${config["host_name"]}"
+
+            local current_status="${_host_state["current_status"]}"
+            local polled_status="${_host_state["polled_status"]}"
+            local transition="host_${current_status}_${polled_status}"
+
+            local new_event="${_host_event_transitions["${transition}"]}"
+
+            host on_event "${new_event}" "${host_name}"
+
+            local new_status="${_host_status_transitions["${transition}"]}"
+
+            case "${new_status}" in
+                wait|stop|offline|online)
+                    info "${host_name} status from ${current_status} to ${new_status}"
+                    _host_state["current_status"]="${new_status}"
+                    ;;
+            esac
+            ;;
+        set_polled_status)
+            local status="${1}" && shift
+
+            _host_state["polled_status"]="${status}"
+            ;;
+    esac
+}
+
+function host_task() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        ensure_host_endpoint_is_published)
+            host_context set
+
+            info
+
+            local status="online"
+
+            if [ "$(pubsub status)" == "offline" ]
+            then
+                info "pubsub status: offline"
+                status="offline"
+            else
+                read host_endpoint < <(wirething get host_endpoint)
+                read host_port < <(wirething get host_port)
+
+                wirething set host_port "0"
+
+                if [[ "${host_port}" != "0" && "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]]
+                then
+                    wirething set host_port "${host_port}"
+                else
+                    info "punch status: offline"
+                    status="offline"
+
+                    if wirething punch_host_endpoint
+                    then
+                        wirething broadcast_host_endpoint
+                        status="online"
+                    else
+                        wirething set host_port "${host_port}"
+                    fi
+                fi
+            fi
+
+            if [ "${status}" == "online" ]
+            then
+                for _peer_name in ${config["peer_name_list"]}
+                do
+                    if ! wirething ensure_host_endpoint_is_published "${_peer_name}"
+                    then
+                        status="offline"
+                    fi
+                done
+            fi
+
+            host_context unset
+            ;;
+        register)
+            local task="${1}" && shift
+
+            case "${task}" in
+                host_ensure_host_endpoint)
+                    tasks register name "host_ensure_host_endpoint" \
+                        frequency "${WT_HOST_OFFLINE_ENSURE_INTERVAL}" \
+                        start now \
+                        stop never \
+                        task "host_task ensure_host_endpoint_is_published"
+                    ;;
+            esac
+            ;;
+        unregister)
+            local task="${1}" && shift
+
+            case "${task}" in
+                host_ensure_host_endpoint)
+                    tasks unregister name "host_ensure_host_endpoint"
+                    ;;
+            esac
+    esac
+}
+
+function host() {
     local action="${1}" && shift
 
     case "${action}" in
@@ -2427,124 +2598,66 @@ function host_status_usecase() {
             ;;
         init)
             info
-            WT_HOST_OFFLINE_ENABLED="${WT_HOST_OFFLINE_ENABLED:-true}"
             WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-20}" # 20 seconds
             WT_HOST_OFFLINE_INTERVAL="${WT_HOST_OFFLINE_INTERVAL:-30}" # 30 seconds
             WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-60}" # 1 minute
-            WT_HOST_OFFLINE_PUNCH_PID_FILE="${WT_EPHEMERAL_PATH}/host_status_usecase.pid"
+
+            host_context init
+            host_state init
             ;;
         start)
-            local log_id="${config["host_log_id"]}"
-            local log_name="${config["host_log_name"]}"
-
-            info "${config["host_name"]}"
-
-            if [[ "${WT_HOST_OFFLINE_ENABLED}" == "true" ]]
-            then
-                info "enabled"
-                host_status_usecase loop &
-                echo "${!}" > "${WT_HOST_OFFLINE_PUNCH_PID_FILE}"
-            else
-                info "disabled"
-            fi
-            ;;
-        online)
-            info
-            while [ "$(interface get host_status)" == "online" ]
-            do
-                debug "pause: ${WT_HOST_OFFLINE_INTERVAL} seconds"
-                sleep "${WT_HOST_OFFLINE_INTERVAL}"
-            done
-            ;;
-        offline)
             info
 
-            local next_ensure="0"
-
-            while [ "$(interface get host_status)" == "offline" ]
-            do
-                if [[ $(epoch) -gt ${next_ensure} ]]
-                then
-                    local status="online"
-
-                    if [ "$(pubsub status)" == "offline" ]
-                    then
-                        info "pubsub status: offline"
-                        status="offline"
-                    else
-                        read host_endpoint < <(wirething get host_endpoint)
-                        read host_port < <(wirething get host_port)
-
-                        wirething set host_port "0"
-
-                        if [[ "${host_port}" != "0" && "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]]
-                        then
-                            wirething set host_port "${host_port}"
-                        else
-                            info "punch status: offline"
-                            status="offline"
-
-                            if wirething punch_host_endpoint
-                            then
-                                wirething broadcast_host_endpoint &
-                                status="online"
-                            else
-                                wirething set host_port "${host_port}"
-                            fi
-                        fi
-                    fi
-
-                    if [ "${status}" == "online" ]
-                    then
-                        for _peer_name in ${config["peer_name_list"]}
-                        do
-                            if ! wirething ensure_host_endpoint_is_published "${_peer_name}"
-                            then
-                                status="offline"
-                            fi
-                        done
-                    fi
-
-                    if [ "${status}" == "online" ]
-                    then
-                        next_ensure="$(($(epoch) + "${WT_HOST_OFFLINE_ENSURE_INTERVAL}"))"
-                        info "next ensure_host_endpoint_is_published in $((${next_ensure} - $(epoch))) seconds"
-                    fi
-
-                    if [ "${status}" == "offline" ]
-                    then
-                        info "pause after error: ${WT_PAUSE_AFTER_ERROR} seconds"
-                        sleep "${WT_PAUSE_AFTER_ERROR}"
-                        continue
-                    fi
-                fi
-
-                debug "pause: ${WT_HOST_OFFLINE_INTERVAL} seconds"
-                sleep "${WT_HOST_OFFLINE_INTERVAL}"
-            done
+            host_state start_host
             ;;
-        loop)
-            info "pause before start: ${WT_HOST_OFFLINE_START_DELAY} seconds"
-            sleep "${WT_HOST_OFFLINE_START_DELAY}"
+        poll_status)
+            host_context set
 
-            PUNCH_PID="$(cat "${WT_HOST_OFFLINE_PUNCH_PID_FILE}")"
+            local status="$(interface get host_status)"
 
-            while true
-            do
-                case "$(interface get host_status)" in
-                    online)
-                        host_status_usecase online
-                        ;;
-                    offline)
-                        host_status_usecase offline
-                        ;;
-                    *)
-                        error "invalid host status"
-                esac
+            debug "${status}"
 
-            done
+            host_state set_polled_status "${status}"
 
-            info "end"
+            host_context unset
+            ;;
+        on_event)
+            local new_event="${1}" && shift
+            local host_name="${1}" && shift
+
+            case "${new_event}" in
+                on_host_start)
+                    info "${new_event}"
+
+                    tasks register name "host_poll_status" \
+                        frequency "${WT_HOST_OFFLINE_INTERVAL}" \
+                        start "+${WT_HOST_OFFLINE_START_DELAY}" \
+                        stop never \
+                        task "host poll_status"
+                    ;;
+                on_host_stop)
+                    info "${new_event}"
+
+                    tasks unregister name "host_poll_status"
+                    ;;
+                on_host_offline)
+                    info "${new_event}"
+
+                    host_task register "host_ensure_host_endpoint"
+                    ;;
+                on_host_online)
+                    info "${new_event}"
+
+                    host_task unregister "host_ensure_host_endpoint"
+                    ;;
+            esac
+            ;;
+        run)
+            host_context set
+
+            host_state transition
+
+            host_context unset
             ;;
     esac
 }
@@ -2836,7 +2949,7 @@ wt_others_list=(
     utils
     udp
     wirething
-    host_status_usecase
+    host
     peer
 )
 
@@ -2991,7 +3104,7 @@ function wirething_main() {
         start)
             info
 
-            host_status_usecase start
+            host start
 
             peer start
             ;;
@@ -3000,6 +3113,7 @@ function wirething_main() {
 
             while true
             do
+                host run
                 peer run
                 tasks run
                 sleep 5
