@@ -756,8 +756,6 @@ function env_config() {
     esac
 }
 
-alias config="env_config"
-
 WT_CONFIG_TYPE="${WT_CONFIG_TYPE:-env}"
 alias config="${WT_CONFIG_TYPE}_config"
 config ""        || die "invalid WT_CONFIG_TYPE *${WT_CONFIG_TYPE}*, options: $(options config)"
@@ -1197,7 +1195,6 @@ function wireproxy_interface() {
             info
 
             WIREPROXY_COMMAND="${WIREPROXY_COMMAND:-wireproxy}"
-            WIREPROXY_PID_FILE="${WT_EPHEMERAL_PATH}/wireproxy.pid"
             WIREPROXY_RELOAD_FILE="${WT_EPHEMERAL_PATH}/wireproxy.reload"
             WIREPROXY_READY_FILE="${WT_EPHEMERAL_PATH}/wireproxy.ready"
             WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}"
@@ -1223,7 +1220,6 @@ function wireproxy_interface() {
             wg_quick_interface init
 
             declare -g -A wireproxy_name_table
-
             ;;
         up)
             info
@@ -1250,137 +1246,130 @@ function wireproxy_interface() {
             wireproxy_interface start
             ;;
         down)
-            info
+            wireproxy_interface stop
             ;;
         start)
             info
+            local wireproxy_params=""
 
-            wireproxy_interface loop &
+            if timeout 2 nc -z ${WIREPROXY_HEALTH_BIND/:/ } 2>&${null}
+            then
+                error "health bind disabled, tcp ${WIREPROXY_HEALTH_BIND} address already in use"
+            elif [ "${WIREPROXY_HEALTH_BIND}" != "disabled" ]
+            then
+                wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
+            fi
+
+            declare -g -a WIREPROXY_PROC
+
+            coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(wireproxy_generate_config_file) 2>&1)
+            local pid="${!}"
+
+            WIREPROXY_PROC[2]="${pid}"
             ;;
         stop)
-            info
-            if [ -f "${WIREPROXY_PID_FILE}" ]
+            if [[ ! -v WIREPROXY_PROC ]]
             then
-                {
-                    cat "${WIREPROXY_PID_FILE}"
-                } | {
-                    read pid
-                    info "kill -TERM ${pid}"
-                    rm -f "${WIREPROXY_READY_FILE}"
-                    kill -TERM "${pid}" || true
-                }
+                info "'wireproxy' was not running"
+                return 0
             fi
-            ;;
-        reload)
-            info
 
-            if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
+            local out="${WIREPROXY_PROC[1]}"
+            local pid="${WIREPROXY_PROC[2]}"
+
+            rm -f "${WIREPROXY_READY_FILE}"
+
+            if kill -TERM "${pid}"
             then
-                local reload_timeout="$((${EPOCHSECONDS} + 45))"
-                local reload_status="success"
+                info "'wireproxy' pid=${pid} was successfully stopped"
+            else
+                error "'wireproxy' pid=${pid} stop error=${?}"
+            fi
 
-                touch "${WIREPROXY_RELOAD_FILE}"
+            exec {out}>&- || true
+            unset WIREPROXY_PROC || true
+            ;;
+        run)
+            local line
+
+            if [[ -f "${WIREPROXY_RELOAD_FILE}" && -f "${WIREPROXY_READY_FILE}" ]]
+            then
+                rm -f "${WIREPROXY_RELOAD_FILE}"
                 wireproxy_interface stop
-
-                while [ ! -f "${WIREPROXY_READY_FILE}" ]
-                do
-                    if [[ "${EPOCHSECONDS}" -gt "${reload_timeout}" ]]
-                    then
-                        error "timeouted"
-                        reload_status="failed"
-                        break
-                    fi
-                    sleep 1
-                done
-
-                info "${reload_status}"
+                wireproxy_interface start
             fi
-            ;;
-        loop)
-            info
 
-            {
-                while true
-                do
-                    local wireproxy_params=""
+            while true
+            do
+                # TODO break on max num of messages
+                #
 
-                    if nc -z ${WIREPROXY_HEALTH_BIND/:/ } 2>&${null}
+                if [[ "${running}" == "false" ]]
+                then
+                    break
+                fi
+
+                if [[ ! -v WIREPROXY_PROC ]]
+                then
+                    break
+                fi
+
+                if ! read -u "${WIREPROXY_PROC[0]}" -t 1 line
+                then
+                    break
+                fi
+
+                echo "${line}" | { grep "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+                    | raw_log wireproxy trace 27
+
+                echo "${line}" | { grep -v "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+                    | {
+                    case "${line}" in
+                        "DEBUG: "*|"ERROR: "*)
+                            raw_log wireproxy from_line 27
+                            ;;
+                        *)
+                            raw_log wireproxy from_line 20
+                    esac
+                }
+
+                if ! grep "peer(" <<<"${line}" > /dev/null
+                then
+                    case "${line}" in
+                        "DEBUG"*"Interface state was Down, requested Up, now Up")
+                            touch "${WIREPROXY_READY_FILE}"
+                            info "ready"
+                            ;;
+                        "ERROR"*"address already in use")
+                            wirething set host_port 1024
+                            ;;
+                        "panic: listen tcp ${WIREPROXY_HEALTH_BIND}: bind: address already in use")
+                            # TODO disable health bind if address already in use
+                            ;;
+                    esac
+                    continue
+                else
+                    local index="$(echo "${line}" | grep -o " peer(.*) - ")"
+                    local peer_name="${wireproxy_name_table["${index}"]}"
+
+                    if [ "${peer_name}" == "" ]
                     then
-                        error "health bind disabled, tcp ${WIREPROXY_HEALTH_BIND} address already in use"
-                    elif [ "${WIREPROXY_HEALTH_BIND}" != "disabled" ]
-                    then
-                        wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
-                    fi
-
-                    coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(wireproxy_generate_config_file) 2>&1)
-                    echo "${!}" > "${WIREPROXY_PID_FILE}"
-                    rm -f "${WIREPROXY_RELOAD_FILE}"
-
-                    cat <&${WIREPROXY_PROC[0]} || true
-                    rm -f "${WIREPROXY_PID_FILE}"
-
-                    sleep 5 # TODO evaluate if this sleep still needed
-
-                    if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
-                    then
-                        break
-                    fi
-
-                    sleep 1
-                done
-            } | {
-                while read line
-                do
-                    echo "${line}" | { grep "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
-                        | raw_log wireproxy trace 27
-
-                    echo "${line}" | { grep -v "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
-                        | {
-                        case "${line}" in
-                            "DEBUG: "*|"ERROR: "*)
-                                raw_log wireproxy from_line 27
-                                ;;
-                            *)
-                                raw_log wireproxy from_line 20
-                        esac
-                    }
-
-                    if ! grep "peer(" <<<"${line}" > /dev/null
-                    then
-                        case "${line}" in
-                            "DEBUG"*"Interface state was Down, requested Up, now Up")
-                                touch "${WIREPROXY_READY_FILE}"
-                                info "ready"
-                                ;;
-                            "ERROR"*"address already in use")
-                                wirething set host_port 0 &
-                                ;;
-                            "panic: listen tcp ${WIREPROXY_HEALTH_BIND}: bind: address already in use")
-                                # TODO disable health bind if address already in use
-                                ;;
-                        esac
+                        error "peer_name="${peer_name:=''}" peer not found: ${line}"
                         continue
-                    else
-                        local index="$(echo "${line}" | grep -o " peer(.*) - ")"
-                        local peer_name="${wireproxy_name_table["${index}"]}"
-
-                        if [ "${peer_name}" == "" ]
-                        then
-                            error "peer_name="${peer_name:=''}" peer not found: ${line}"
-                            continue
-                        fi
-
-                        case "${line}" in
-                            *"Receiving keepalive packet")
-                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
-                                ;;
-                            *"Received handshake response")
-                                epoch > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
-                                ;;
-                        esac
                     fi
-                done
-            }
+
+                    case "${line}" in
+                        *"Receiving keepalive packet")
+                            echo "${EPOCHSECONDS}" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
+                            ;;
+                        *"Received handshake response")
+                            echo "${EPOCHSECONDS}" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
+                            ;;
+                    esac
+                fi
+            done
+
+            return 0
             ;;
         set)
             local name="${1}" && shift
@@ -1391,7 +1380,7 @@ function wireproxy_interface() {
 
                     if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
                     then
-                        wireproxy_interface reload
+                        touch "${WIREPROXY_RELOAD_FILE}"
                     fi
                     ;;
                 peer_endpoint)
@@ -1401,7 +1390,7 @@ function wireproxy_interface() {
 
                     if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
                     then
-                        wireproxy_interface reload
+                        touch "${WIREPROXY_RELOAD_FILE}"
                     fi
                     ;;
             esac
@@ -3128,6 +3117,9 @@ function wirething_main() {
             do
                 wirething up_peer "${_peer_name}"
             done
+
+            host start
+            peer start
             ;;
         down)
             wt_type_for_each down || true
@@ -3146,19 +3138,14 @@ function wirething_main() {
                 error "'${WT_EPHEMERAL_PATH}' delete error"
             fi
             ;;
-        start)
-            info
-
-            host start
-            peer start
-            ;;
         loop)
             info "start"
 
             while [ "${running}" == "true" ]
             do
-                host run
+                interface run
                 peer run
+                host run
                 tasks run
 
                 if [ "${running}" == "false" ]
@@ -3179,7 +3166,6 @@ function wirething_main() {
 function main() {
     wirething_main init
     wirething_main up
-    wirething_main start
     wirething_main loop
 }
 
