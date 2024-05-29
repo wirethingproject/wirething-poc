@@ -1526,10 +1526,12 @@ function udphole_punch() {
                 if [[ "${host_endpoint}" == "${endpoint}" ]]
                 then
                     result="online"
+                    info "${result:-''}"
+                    return 0
                 fi
 
                 info "${result:-''}"
-                echo "${result}"
+                return 1
             }
             ;;
         open)
@@ -1627,13 +1629,15 @@ function stun_punch() {
                 if [[ "${host_port}" == "${port}" && "${host_endpoint}" == "${endpoint}" ]]
                 then
                     result="online"
+                    info "${result:-''}"
+                    return 0
                 fi
             else
                 debug "stun ** **"
             fi
 
             info "${result:-''}"
-            echo "${result}"
+            return 1
             ;;
         open)
             debug "${STUN_HOSTNAME}" "${STUN_PORT}"
@@ -2539,8 +2543,8 @@ function host_task() {
                     new_punch="success"
                 fi
 
-                if [[ "${host_port}" != "0" && "${host_port}" != "" && "${host_endpoint}" != "" &&
-                    "$(punch status "${host_port}" "${host_endpoint}")" == "online" ]]
+                if [[ "${host_port}" != "0" && "${host_port}" != "" && "${host_endpoint}" != "" ]] &&
+                    punch status "${host_port}" "${host_endpoint}"
                 then
                     wirething set host_endpoint "${host_endpoint}"
                     wirething set host_port "${host_port}"
