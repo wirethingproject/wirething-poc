@@ -184,8 +184,7 @@ function log_init() {
     WT_LOG_TIME="${WT_LOG_TIME:-$(log_default_time)}"
     WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
 
-    log_id=""
-    log_name=""
+    log_prefix=""
 
     log_dev
 
@@ -212,18 +211,16 @@ function log_init() {
         *)
             die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
     esac
+
+    if [ "${WT_LOG_TIME}" == "true" ]
+    then
+        alias log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
+    else
+        alias log='echo'
+    fi
 }
 
 log_init
-
-function log() {
-    if [ "${WT_LOG_TIME}" == "true" ]
-    then
-        echo -n "$(date -Iseconds) "
-    fi
-
-    echo "${@}"
-}
 
 function raw_trace() {
     log "TRACE" >&${WT_LOG_TRACE} || true
@@ -286,27 +283,20 @@ function raw_log() {
         done
     else
         raw_log_set_level
-        cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level_name}" "[${app}] ")," >&${level_fd} || true
+        cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level_name} [${app}] ")," >&${level_fd} || true
     fi
 }
 
-function log_set_prefix() {
-    prefix="[$(short4 "${log_name}----")-$(short4 "${log_id}----")] ${FUNCNAME[2]:-} ${action:-}"
-}
-
 function debug() {
-    log_set_prefix
-    log "DEBUG" "${prefix}" "${@}" >&${WT_LOG_DEBUG} || true
+    log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${@}" >&${WT_LOG_DEBUG} || true
 }
 
 function info() {
-    log_set_prefix
-    log "INFO " "${prefix}" "${@}" >&${WT_LOG_INFO} || true
+    log "INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${@}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
-    log_set_prefix
-    log "ERROR" "${prefix}" "${@}" >&${WT_LOG_ERROR} || true
+    log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${@}" >&${WT_LOG_ERROR} || true
 }
 
 function die() {
@@ -739,8 +729,7 @@ function env_config() {
             host_name="${host_name%.key}" # remove extension
 
             config["host_name"]="${host_name}"
-            config["host_log_name"]="${host_name}"
-            config["host_log_id"]="${host_wg_pub}"
+            config["host_log_prefix"]="[$(short4 "${host_name}----")-$(short4 "${host_wg_pub}----")]"
             config["host_wg_pub"]="${host_wg_pub}"
             config["host_gpg_id"]="${host_wg_pub}@${gpg_domain_name}"
             config["host_totp_id"]="${host_wg_pub}"
@@ -765,8 +754,7 @@ function env_config() {
                 local peer_name="${_peer_wg_pub_file##*/}" # remove path
                 peer_name="${peer_name%.pub}" # remove extension
 
-                config["peer_log_name_${peer_name}"]="${peer_name}"
-                config["peer_log_id_${peer_name}"]="${peer_wg_pub}"
+                config["peer_log_prefix_${peer_name}"]="[$(short4 "${peer_name}----")-$(short4 "${peer_wg_pub}----")]"
 
                 config["peer_wg_pub_${peer_name}"]="${peer_wg_pub}"
                 config["peer_gpg_id_${peer_name}"]="${peer_wg_pub}@${gpg_domain_name}"
@@ -2421,12 +2409,10 @@ function host_context() {
 
     case "${action}" in
         set)
-            log_id="${config["host_log_id"]}"
-            log_name="${config["host_log_name"]}"
+            log_prefix="${config["host_log_prefix"]}"
             ;;
         unset)
-            log_id=""
-            log_name=""
+            log_prefix=""
             ;;
     esac
 }
@@ -2675,12 +2661,10 @@ function peer_context() {
         set)
             local peer_name="${1}" && shift
 
-            log_id="${config["peer_log_id_${peer_name}"]}"
-            log_name="${config["peer_log_name_${peer_name}"]}"
+            log_prefix="${config["peer_log_prefix_${peer_name}"]}"
             ;;
         unset)
-            log_id=""
-            log_name=""
+            log_prefix=""
             ;;
     esac
 }
