@@ -2610,7 +2610,7 @@ function host() {
         init)
             info
             WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-20}" # 20 seconds
-            WT_HOST_OFFLINE_INTERVAL="${WT_HOST_OFFLINE_INTERVAL:-30}" # 30 seconds
+            WT_HOST_OFFLINE_PULL_STATUS_INTERVAL="${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL:-30}" # 30 seconds
             WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-60}" # 1 minute
 
             host_context init
@@ -2641,7 +2641,7 @@ function host() {
                     info "${new_event}"
 
                     tasks register name "host_poll_status" \
-                        frequency "${WT_HOST_OFFLINE_INTERVAL}" \
+                        frequency "${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL}" \
                         start "+${WT_HOST_OFFLINE_START_DELAY}" \
                         stop never \
                         task "host poll_status"
@@ -2854,6 +2854,7 @@ function peer() {
             info
             WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-10}" # 10 seconds
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
+            WT_PEER_OFFLINE_PULL_STATUS_INTERVAL="${WT_PEER_OFFLINE_PULL_STATUS_INTERVAL:-15}" # 15 seconds
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
             WT_PEER_OFFLINE_ENSURE_INTERVAL="${WT_PEER_OFFLINE_ENSURE_INTERVAL:-900}" # 15 minutes
 
@@ -2898,7 +2899,7 @@ function peer() {
                     info "${new_event}"
 
                     tasks register name "peer_poll_status_${peer_name}" \
-                        frequency "${WT_PEER_OFFLINE_FETCH_INTERVAL}" \
+                        frequency "${WT_PEER_OFFLINE_PULL_STATUS_INTERVAL}" \
                         start "+${WT_PEER_OFFLINE_START_DELAY}" \
                         stop never \
                         task "peer poll_status ${peer_name}"
