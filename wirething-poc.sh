@@ -123,7 +123,7 @@ function capture() {
 }
 
 function log_dev() {
-    exec {null}>>/dev/null
+    exec {null}<>/dev/null
     exec {err}>&2
 }
 
@@ -2983,6 +2983,7 @@ function wt_others_for_each() {
 }
 
 function wirething_main() {
+    local sig_action="${action:-}"
     local action="${1}" && shift
 
     case "${action}" in
@@ -3019,11 +3020,16 @@ function wirething_main() {
         init)
             info
 
+            running="true"
+
+            wirething_main trap_signals
+
             set_pid
             WT_PID="${PID}"
 
             WT_CONFIG_PATH="${WT_CONFIG_PATH:-${PWD}}"
             WT_STATE_PATH="${WT_CONFIG_PATH}/state"
+            WT_ERROR_PATH="${WT_CONFIG_PATH}/error"
 
             if [ "$(id -u)" != 0 ]
             then
@@ -3044,41 +3050,88 @@ function wirething_main() {
 
             wt_type_for_each init
             wt_others_for_each init
+
+            ;;
+        signal_log)
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "INFO signal=${signal_str::7} was_running=${was_running/true/true } is_running=${running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
+            ;;
+        signal_stderr_msg)
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "ERROR Error writing to stderr fd=${err}, redirecting stderr to ${1}"
             ;;
         signal)
-            info "${@}"
+            trap "" SIGPIPE
+            trap "" ERR
 
-            local signal="${1:-}" && shift
-            local result="${1:-}" && shift
-            local lineno="${1:-}" && shift
-            local funcname="${1:-}" && shift
+            local signal="${1}" && shift
+            local lineno="${1:-''}    " && shift
+            local funcname="${1:-funcname=''}" && shift
+            local result="${1:-''}" && shift
+            local action="${sig_action:-action=''}"
+            local was_running="${running}"
+            local signal_str="${signal}    "
 
             case "${signal}" in
-                ERR)
-                    error "signal=${signal} result=${result} lineno=${lineno} funcname=${funcname}"
-                    ;;
-                EXIT)
-                    # Set trap to empty to run only once
+                SIGTERM|SIGHUP)
                     trap "" ${signal}
-                    info "pkill -term -g ${WT_PID}"
-                    pkill -TERM -g "${WT_PID}" || true
+                    running="false"
+                    ;;
+                SIGINT)
+                    trap "" ${signal}
+                    running="false"
+
+                    if [ -t 0 ]
+                    then
+                        echo "" >&0 2>&${null} || true
+                    fi
+                    ;;
+            esac
+
+            if ! wirething_main signal_log >&${err} 2>&${null}
+            then
+                local err_file="${WT_ERROR_PATH}/$(date -I).log"
+
+                wirething_main signal_log >> "${err_file}"
+
+                if [ -t 0 ]
+                then
+                    wirething_main signal_stderr_msg "tty" >> "${err_file}"
+                    exec {tty}>&0
+                else
+                    wirething_main signal_stderr_msg "${err_file}" >> "${err_file}"
+                    exec {tty}>> "${err_file}"
+                fi
+
+                exec {err}>&-
+                exec {err}>&${tty}
+            fi
+
+            case "${signal}" in
+                EXIT)
+                    trap "" ${signal}
                     wirething_main down
                     ;;
             esac
+
+            wirething_main trap SIGPIPE
+            wirething_main trap ERR
+
             return 0
             ;;
         trap)
-            for _signal in EXIT ERR SIGTERM
+            trap "wirething_main signal \"${1}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\" \"${?:-null}\"" "${1}"
+            ;;
+        trap_signals)
+            info
+            for _signal in EXIT ERR SIGTERM SIGINT SIGHUP SIGPIPE
             do
-                trap "wirething_main signal \"${_signal}\" \"${?:-null}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\"" "${_signal}"
+                wirething_main trap "${_signal}"
             done
             ;;
         up)
             info
 
-            wirething_main trap
-
             mkdir -p "${WT_STATE_PATH}"
+            mkdir -p "${WT_ERROR_PATH}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             config up
@@ -3109,25 +3162,25 @@ function wirething_main() {
             info
 
             host start
-
             peer start
             ;;
         loop)
             info "start"
 
-            while true
+            while [ "${running}" == "true" ]
             do
                 host run
                 peer run
                 tasks run
-                sleep 5
+
+                if [ "${running}" == "false" ]
+                then
+                    break
+                fi
+
+                sleep 5 || true
             done
 
-            info "end"
-            ;;
-        wait)
-            info
-            wait $(jobs -p) || true
             info "end"
             ;;
     esac
@@ -3140,7 +3193,6 @@ function main() {
     wirething_main up
     wirething_main start
     wirething_main loop
-    wirething_main wait
 }
 
 # cli
