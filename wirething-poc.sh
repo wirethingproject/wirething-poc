@@ -398,7 +398,7 @@ function fs_store() {
 
             if [ -e "${host_peer_file}" ]
             then
-                die "*${host_peer_file}* exists"
+                die "'${host_peer_file}' exists"
             fi
 
             ({
@@ -1100,19 +1100,25 @@ function wg_quick_interface() {
             wg_interface init
             ;;
         down)
-            info
+            if [[ ! -v WGQ_CONFIG_FILE ]]
+            then
+                info "WGQ_CONFIG_FILE was not set"
+                return 0
+            fi
 
             if [ "$(wg_interface status)" == "up" ]
             then
                 info "wg-quick down ${WGQ_CONFIG_FILE}"
                 wg-quick down "${WGQ_CONFIG_FILE}"
+            else
+                info "wg-quick was not up"
             fi
 
             if rm -f "${WGQ_CONFIG_FILE}"
             then
-                info "*${WGQ_CONFIG_FILE}* was deleted"
+                info "'${WGQ_CONFIG_FILE}' was successfully deleted"
             else
-                error "*${WGQ_CONFIG_FILE}* delete error"
+                error "'${WGQ_CONFIG_FILE}' delete error"
             fi
             ;;
         set)
@@ -1856,13 +1862,24 @@ function gpg_ephemeral_encryption() {
             done
             ;;
         down)
-            info
-            gpgconf --kill gpg-agent
+            if [[ ! -v GNUPGHOME ]]
+            then
+                info "GNUPGHOME was not set"
+                return 0
+            fi
+
+            if gpgconf --kill gpg-agent
+            then
+                info "'gpg-agent' was successfully stopped"
+            else
+                error "'gpg-agent' stop error=${?}"
+            fi
+
             if rm -rf "${GNUPGHOME}"
             then
-                info "*${GNUPGHOME}* was deleted"
+                info "'${GNUPGHOME}' was successfully deleted"
             else
-                error "*${GNUPGHOME}* delete error"
+                error "'${GNUPGHOME}' delete error=${?}"
             fi
             ;;
         encrypt)
@@ -3131,15 +3148,20 @@ function wirething_main() {
             done
             ;;
         down)
-            wt_type_for_each down
-            wt_others_for_each down
+            wt_type_for_each down || true
+            wt_others_for_each down || true
 
-            info
+            if [[ ! -v WT_EPHEMERAL_PATH ]]
+            then
+                info "WT_EPHEMERAL_PATH was not set"
+                return 0
+            fi
+
             if rm -rf "${WT_EPHEMERAL_PATH}"
             then
-                info "*${WT_EPHEMERAL_PATH}* was deleted"
+                info "'${WT_EPHEMERAL_PATH}' was successfully deleted"
             else
-                error "*${WT_EPHEMERAL_PATH}* delete error"
+                error "'${WT_EPHEMERAL_PATH}' delete error"
             fi
             ;;
         start)
