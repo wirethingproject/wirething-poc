@@ -8,51 +8,29 @@ export LC_ALL=C
 
 # bash compat
 
-function is_bash_compat() {
-    if [[ (${BASH_VERSINFO[0]} -gt ${1}) ||
-          (${BASH_VERSINFO[0]} -eq ${1} && ${BASH_VERSINFO[1]} -ge ${2}) ]]
-    then
-        return 0
-    else
-        return 1
-    fi
-}
+# changelog:    https://github.com/bminor/bash/blob/master/NEWS
+# bash changes: https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
+# ${EPOCHSECONDS} requires bash 5.0
 
-function bash_compat() {
-    local action="${1}" && shift
+if ! [[ (${BASH_VERSINFO[0]} -gt 5) ||
+        (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -ge 0) ]]
+then
+    local version="${BASH_VERSINFO[@]}"
+    echo "bash ${version// /.}"
+    echo "bash < 5.0 not supported"
+    exit 1
+fi
 
-    case "${action}" in
-        deps)
-            ;;
-        _init)
-            # changelog:    https://github.com/bminor/bash/blob/master/NEWS
-            # bash changes: https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
+# set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
 
-            if ! is_bash_compat 5 0
-            then
-                local version="${BASH_VERSINFO[@]}"
-                echo "bash ${version// /.}"
-                echo "bash < 5.0 not supported"
-                exit 1
-            fi
+set -o errexit  # -e Exit immediately if any command returns a non-zero status
+set -o errtrace # -E Make ERR trap work with shell functions
+set -o nounset  # -u Treat unset variables as an error
+set -o pipefail # Return non-zero if any command in a pipeline fails
 
-            # set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
-
-            set -o errexit  # -e Exit immediately if any command returns a non-zero status
-            set -o errtrace # -E Make ERR trap work with shell functions
-            set -o nounset  # -u Treat unset variables as an error
-            set -o pipefail # Return non-zero if any command in a pipeline fails
-
-            shopt -s expand_aliases  # Aliases are expanded on non interactive shell
-            shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
-            shopt -s execfail        # Don't exit if exec cannot execute the file
-
-            alias epoch='echo "${EPOCHSECONDS}"' # requires bash 5.0
-            ;;
-    esac
-}
-
-bash_compat _init
+shopt -s expand_aliases  # Aliases are expanded on non interactive shell
+shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
+shopt -s execfail        # Don't exit if exec cannot execute the file
 
 # utils
 
@@ -810,7 +788,7 @@ function tasks() {
             shift # task
             local task="${1}" && shift
 
-            local now="$(epoch)"
+            local now="${EPOCHSECONDS}"
             local max_now="(1<<63)-1"
             local start="$((${now} ${plus_start/now/+0}))"
             local stop="$((${now} ${plus_stop/never/+${max_now}-${now}}))"
@@ -824,7 +802,7 @@ function tasks() {
             shift # name
             local name="${1}" && shift
 
-            debug "name=${name} now=$(epoch) next=${_tasks_next["${name}"]} frequency start stop task=${_tasks["${name}"]}"
+            debug "name=${name} now=${EPOCHSECONDS} next=${_tasks_next["${name}"]} frequency start stop task=${_tasks["${name}"]}"
 
             unset _tasks["${name}"]
             unset _tasks_next["${name}"]
@@ -836,7 +814,7 @@ function tasks() {
             do
                 read frequency start stop task <<<"${_tasks[${_name}]}"
                 read next <<<"${_tasks_next[${_name}]}"
-                read now <<<"$(epoch)"
+                read now <<<"${EPOCHSECONDS}"
 
                 if [[ ${now} -ge ${start} && ${now} -ge ${next} && ${now} -lt ${stop} ]]
                 then
@@ -1298,7 +1276,7 @@ function wireproxy_interface() {
 
             if [ ! -f "${WIREPROXY_RELOAD_FILE}" ]
             then
-                local reload_timeout="$(($(epoch) + 45))"
+                local reload_timeout="$((${EPOCHSECONDS} + 45))"
                 local reload_status="success"
 
                 touch "${WIREPROXY_RELOAD_FILE}"
@@ -1306,7 +1284,7 @@ function wireproxy_interface() {
 
                 while [ ! -f "${WIREPROXY_READY_FILE}" ]
                 do
-                    if [[ "$(epoch)" -gt "${reload_timeout}" ]]
+                    if [[ "${EPOCHSECONDS}" -gt "${reload_timeout}" ]]
                     then
                         error "timeouted"
                         reload_status="failed"
@@ -1439,7 +1417,7 @@ function wireproxy_interface() {
                     } | {
                         read last_keepalive
 
-                        local keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+                        local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
 
                         local result
 
@@ -1467,7 +1445,7 @@ function wireproxy_interface() {
                     } | sort -n | tail -n 1 | {
                         read last_keepalive
 
-                        local keepalive_delta="$(($(epoch) - ${last_keepalive}))"
+                        local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
 
                         debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
                         local result
@@ -1959,7 +1937,7 @@ function totp_token() {
 
 function totp_interval() {
     {
-        cat <<<"$(($(epoch) / ${TOTP_PERIOD}))"
+        cat <<<"$((${EPOCHSECONDS} / ${TOTP_PERIOD}))"
     } | {
         # int2hex
         read int
@@ -2955,7 +2933,6 @@ wt_optional_list=(
 )
 
 wt_others_list=(
-    bash_compat
     utils
     udp
     wirething
