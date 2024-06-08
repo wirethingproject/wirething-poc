@@ -266,20 +266,20 @@ function raw_log() {
 }
 
 function debug() {
-    log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${@}" >&${WT_LOG_DEBUG} || true
+    log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
 }
 
 function info() {
-    log "INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${@}" >&${WT_LOG_INFO} || true
+    log "INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_INFO} || true
 }
 
 function error() {
-    log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${@}" >&${WT_LOG_ERROR} || true
+    log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_ERROR} || true
 }
 
 function die() {
     action="${FUNCNAME[1]:-} ${action:-}"
-    error "${@}"
+    error "${*}"
     exit 1
 }
 
