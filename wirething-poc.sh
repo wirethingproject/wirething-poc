@@ -760,6 +760,66 @@ WT_CONFIG_TYPE="${WT_CONFIG_TYPE:-env}"
 alias config="${WT_CONFIG_TYPE}_config"
 config ""        || die "invalid WT_CONFIG_TYPE *${WT_CONFIG_TYPE}*, options: $(options config)"
 
+# event
+
+function event() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        up)
+            info
+
+            coproc EVENT (cat -u)
+            ;;
+        down)
+            if [[ ! -v EVENT_PID ]]
+            then
+                info "'event' was not running"
+            else
+                if kill -TERM "${EVENT_PID}"
+                then
+                    info "'event' pid=${EVENT_PID} was successfully stopped"
+                else
+                    error "'event' pid=${EVENT_PID} stop error=${?}"
+                fi
+            fi
+            ;;
+        fire)
+            if [[ ! -v EVENT ]]
+            then
+                info "'event' is not running"
+                return 0
+            fi
+
+            debug "${FUNCNAME[1]} event ${@}"
+            if ! echo "${FUNCNAME[1]} event ${@}" >&${EVENT[1]}
+            then
+                info "'event' is not running"
+            fi
+            ;;
+        run)
+            if [[ ! -v EVENT ]]
+            then
+                info "'event' is not running"
+                return 0
+            fi
+
+            local event event_fd="${EVENT[0]}"
+
+            while read -t 0 -u ${event_fd}
+            do
+                if read -u "${event_fd}" event
+                then
+                    debug "${event}"
+                    ${event}
+                else
+                    break
+                fi
+            done
+            ;;
+    esac
+}
+
 # tasks
 
 function tasks() {
