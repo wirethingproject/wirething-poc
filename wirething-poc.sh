@@ -3320,6 +3320,7 @@ function wirething_main() {
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             config up
+            event up
 
             wt_type_for_each up
             wt_others_for_each up
@@ -3335,8 +3336,13 @@ function wirething_main() {
             peer start
             ;;
         down)
+            peer stop
+            host stop
+
             wt_type_for_each down || true
             wt_others_for_each down || true
+
+            event down
 
             if [[ ! -v WT_EPHEMERAL_PATH ]]
             then
@@ -3356,17 +3362,15 @@ function wirething_main() {
 
             while [ "${running}" == "true" ]
             do
-                interface run
-                peer run
-                host run
-                tasks run
-
-                if [ "${running}" == "false" ]
+                if ! sleep 5
                 then
                     break
                 fi
 
-                sleep 5 || true
+                event run
+                peer run
+                host run
+                tasks run
             done
 
             info "end"
