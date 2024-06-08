@@ -2078,6 +2078,9 @@ function totp_topic() {
             TOTP_ALGORITHM="${TOTP_ALGORITHM:-SHA256}"
             TOTP_HMAC="${TOTP_HMAC:-python}"
             ;;
+        next)
+            echo "$(( ((${EPOCHSECONDS} / ${TOTP_PERIOD} + 1) * ${TOTP_PERIOD}) - ${EPOCHSECONDS} + 5))"
+            ;;
         publish|subscribe)
             local peer_name="${1}" && shift
 
