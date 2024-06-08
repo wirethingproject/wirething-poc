@@ -3095,15 +3095,11 @@ function peer() {
                 on_peer_offline)
                     info "${new_event}"
 
-                    peer_task fetch_peer_endpoint_since_all "${peer_name}"
-
-                    peer_task register "peer_poll_endpoint" "${peer_name}"
                     peer_task register "peer_ensure_host_endpoint" "${peer_name}"
                     ;;
                 on_peer_online)
                     info "${new_event}"
 
-                    peer_task unregister "peer_poll_endpoint" "${peer_name}"
                     peer_task unregister "peer_ensure_host_endpoint" "${peer_name}"
                     ;;
             esac
