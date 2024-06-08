@@ -2870,16 +2870,34 @@ function peer_state() {
                 ["peer_offline_online"]="online"
                 ["peer_stop_stop"]=""
             )
+
+            declare -g -A _peer_status_text=(
+                ["start"]="start"
+                ["wait"]="init"
+                ["offline"]="down"
+                ["online"]="up"
+                ["stop"]="stop"
+            )
+
+            declare -g -A _peer_status_screen=(
+                ["start"]="start"
+                ["wait"]="init"
+                ["offline"]="💔"
+                ["online"]="💚"
+                ["stop"]="stop"
+            )
             ;;
         start_peer)
             local peer_name="${1}" && shift
             info "${peer_name}"
 
+            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
             _peer_state["current_status_${peer_name}"]="start"
             _peer_state["polled_status_${peer_name}"]="start"
 
             peer_state transition "${peer_name}"
 
+            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
             _peer_state["current_status_${peer_name}"]="wait"
             _peer_state["polled_status_${peer_name}"]="wait"
             ;;
@@ -2887,6 +2905,7 @@ function peer_state() {
             local peer_name="${1}" && shift
             info "${peer_name}"
 
+            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
             _peer_state["current_status_${peer_name}"]="stop"
             _peer_state["polled_status_${peer_name}"]="stop"
 
@@ -2907,8 +2926,24 @@ function peer_state() {
 
             case "${new_status}" in
                 wait|stop|offline|online)
-                    info "${peer_name} status from ${current_status} to ${new_status}"
+
+                    local status_time="$((${EPOCHSECONDS} - _peer_state["current_status_timestamp_${peer_name}"]))"
+                    local status_title="${peer_name} is ${_peer_status_text[${new_status}]}"
+                    local status_text="${_peer_status_text[${current_status}]} time was $(format_time "${status_time}")"
+
+                    info "${status_title}, ${status_text}"
+
+                    _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
                     _peer_state["current_status_${peer_name}"]="${new_status}"
+
+                    local all_peers_status=""
+
+                    for _peer_name in ${config["peer_name_list"]}
+                    do
+                        all_peers_status+="${_peer_name} ${_peer_status_screen[${_peer_state["current_status_${_peer_name}"]}]} "
+                    done
+
+                    debug "${all_peers_status}"
                     ;;
             esac
             ;;
