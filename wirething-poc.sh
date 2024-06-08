@@ -2611,7 +2611,7 @@ function host_state() {
                 ["host_online_offline"]="offline"
                 ["host_offline_offline"]=""
                 ["host_offline_online"]="online"
-                ["host_stop_stop"]=""
+                ["host_stop_stop"]="stop"
             )
             ;;
         start_host)
@@ -2763,6 +2763,11 @@ function host() {
             info
 
             host_state start_host
+            ;;
+        stop)
+            info
+
+            host_state stop_host
             ;;
         poll_status)
             host_context set
