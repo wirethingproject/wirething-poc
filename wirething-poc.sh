@@ -3258,6 +3258,7 @@ function wirething_main() {
                 SIGTERM|SIGHUP)
                     trap "" ${signal}
                     running="false"
+                    pkill -TERM -g "${WT_PID}"
                     ;;
                 SIGINT)
                     trap "" ${signal}
