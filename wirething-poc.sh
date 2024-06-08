@@ -1799,10 +1799,12 @@ function ntfy_pubsub() {
         poll)
             local topic="${1}" && shift
             local since="${1}" && shift
+            local format="${1:-raw}" && shift
 
+            debug "curl ${NTFY_CURL_OPTIONS} --max-time \"${NTFY_POLL_TIMEOUT}\" --stderr - \"${NTFY_URL}/${topic}/${format}?poll=1&since=${since}\""
             {
                 curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_POLL_TIMEOUT}" --stderr - \
-                    "${NTFY_URL}/${topic}/raw?poll=1&since=${since}" \
+                    "${NTFY_URL}/${topic}/${format}?poll=1&since=${since}" \
                     || true
             } | tail -n 1 | {
                 read poll_response || true
@@ -1828,11 +1830,14 @@ function ntfy_pubsub() {
             ;;
         subscribe)
             local topic="${1}" && shift
-            debug "$(short "${topic}") starting"
+            local since="${1}" && shift
+            local format="${1:-json}" && shift
+
+            debug "${topic} starting"
 
             {
                 curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
-                    "${NTFY_URL}/${topic}/raw" \
+                    "${NTFY_URL}/${topic}/${format}?since=${since}" \
                     || true
             } | {
                 while read subscribe_response
@@ -1854,7 +1859,6 @@ function ntfy_pubsub() {
                             sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
                             ;;
                         *)
-                            info "$(short "${topic}") response: $(short "${subscribe_response:-''}")"
                             echo "${subscribe_response}"
                     esac
                 done
