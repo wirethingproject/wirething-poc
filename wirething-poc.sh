@@ -2115,7 +2115,7 @@ function wirething() {
 
     case "${action}" in
         deps)
-            echo "mkdir cat hexdump"
+            echo "mkdir cat hexdump jq"
             ;;
         init)
             info
@@ -2149,8 +2149,26 @@ function wirething() {
 
             for _peer_name in ${config["peer_name_list"]}
             do
-                echo "127.0.0.1:10000" > "${WT_PEER_ENDPOINT_PATH}/${_peer_name}"
+                if [ ! -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" ]
+                then
+                    echo "" > "${WT_PEER_ENDPOINT_PATH}/${_peer_name}"
+                fi
             done
+
+            coproc WIRETHING_BG (wirething subscribe_encrypted_peer_endpoint)
+            ;;
+        down)
+            if [[ ! -v WIRETHING_BG_PID ]]
+            then
+                info "'wireproxy_bg' was not running"
+            else
+                if kill -TERM "${WIRETHING_BG_PID}"
+                then
+                    info "'wireproxy_bg' pid=${WIRETHING_BG_PID} was successfully stopped"
+                else
+                    error "'wireproxy_bg' pid=${WIRETHING_BG_PID} stop error=${?}"
+                fi
+            fi
             ;;
         up_host)
             info "${config["host_name"]}"
@@ -2361,6 +2379,84 @@ function wirething() {
                 read topic
                 pubsub poll "${topic}" "${since}"
             }
+            ;;
+        subscribe_encrypted_peer_endpoint)
+            info
+
+            declare -A topic_index
+            declare -A peer_endpoint_list
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                peer_endpoint_list["${_peer_name}"]="$(wirething get peer_endpoint "${_peer_name}")"
+                local topic="$(topic subscribe "${_peer_name}")"
+                topic_index["${topic}"]="${_peer_name}"
+
+                pubsub poll "${topic}" "all" "json" | {
+                    read line
+                    debug "${line}"
+                    wirething subscribe_encrypted_peer_endpoint_process
+                }
+            done
+
+            while true
+            do
+                topic_list="$(IFS=","; echo "${!topic_index[*]}")"
+
+                NTFY_SUBSCRIBE_TIMEOUT="$(topic next)"
+
+                pubsub subscribe "${topic_list}" "1m" "json" | {
+                    while read line
+                    do
+                        debug "${line}"
+                        wirething subscribe_encrypted_peer_endpoint_process
+                    done
+                }
+
+                unset topic_index
+
+                declare -A topic_index
+
+                for _peer_name in ${config["peer_name_list"]}
+                do
+                    local topic="$(topic subscribe "${_peer_name}")"
+                    topic_index["${topic}"]="${_peer_name}"
+                done
+            done
+            ;;
+        subscribe_encrypted_peer_endpoint_process)
+            local event="$(echo "${line}" | jq -r ".event")"
+
+            if [ "${event}" == "message" ]
+            then
+                local topic="$(echo "${line}" | jq -r ".topic")"
+                local encrypted_message="$(echo "${line}" | jq -r ".message")"
+
+                local peer_name="${topic_index[${topic}]}"
+                local peer_endpoint="$(encryption decrypt "${encrypted_message}")"
+
+                debug "${peer_name} ${peer_endpoint} ${peer_endpoint_list["${peer_name}"]}"
+
+                if [ "${peer_endpoint}" != "${peer_endpoint_list["${peer_name}"]}" ]
+                then
+                    peer_endpoint_list["${peer_name}"]="${peer_endpoint}"
+                    info "new peer endpoint ${peer_name} ${peer_endpoint}"
+                    event fire "${peer_name} new_peer_endpoint ${peer_endpoint}"
+                fi
+            else
+                debug "${event}"
+            fi
+            ;;
+        event)
+            local peer_name="${1}" && shift
+            local event="${1}" && shift
+
+            case "${event}" in
+                new_peer_endpoint)
+                    local endpoint="${1}" && shift
+                    wirething set peer_endpoint "${peer_name}" "${endpoint}"
+                    ;;
+            esac
             ;;
         poll_encrypted_peer_endpoint)
             debug
