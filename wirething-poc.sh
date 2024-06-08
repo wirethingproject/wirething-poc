@@ -1175,11 +1175,7 @@ function wg_quick_interface() {
 function wireproxy_generate_config_file() {
     debug
 
-    wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
-
-    cat "${WGQ_CONFIG_FILE}" >&${WT_LOG_TRACE}
-
-    WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wg_quick_generate_config_file
+    wg_quick_generate_config_file
 
     if [ "${WIREPROXY_SOCKS5_BIND}" != "disabled" ]
     then
@@ -1201,25 +1197,26 @@ EOF
 
     for _port in ${WIREPROXY_EXPOSE_PORT_LIST}
     do
+        IFS=: read __port __ip <<<"${_port}"
         cat <<EOF
 
 [TCPServerTunnel]
-ListenPort = ${_port}
-Target = 127.0.0.1:${_port}
+ListenPort = ${__port}
+Target = ${__ip:-127.0.0.1}:${__port}
 EOF
     done
 
     for _forward in ${WIREPROXY_FORWARD_PORT_LIST}
     do
         {
-            echo "${_forward/:/ }"
+            echo "${_forward//:/ }"
         } | {
-            read local_port remote_endpoint
+            read local_port remote_endpoint remote_port local_ip
             cat <<EOF
 
 [TCPClientTunnel]
-BindAddress = 127.0.0.1:${local_port}
-Target = ${remote_endpoint}
+BindAddress = ${local_ip:-127.0.0.1}:${local_port}
+Target = ${remote_endpoint}:${remote_port}
 EOF
         }
     done
@@ -1280,6 +1277,7 @@ function wireproxy_interface() {
             wg_quick_interface init
 
             declare -g -A wireproxy_name_table
+            declare -g -A wireproxy_last_keepalive
             ;;
         up)
             info
@@ -1300,13 +1298,35 @@ function wireproxy_interface() {
                 if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}" ]
                 then
                     echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}"
+                    wireproxy_last_keepalive["${_peer_name}"]="0"
+                else
+                    wireproxy_last_keepalive["${_peer_name}"]="$(cat "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}")"
                 fi
+
             done
 
-            wireproxy_interface start
+            coproc WIREPROXY_BG (wireproxy_interface run)
             ;;
         down)
-            wireproxy_interface stop
+            if [[ ! -v WIREPROXY_BG_PID ]]
+            then
+                info "'wireproxy_bg' was not running"
+            else
+                if kill -TERM "${WIREPROXY_BG_PID}"
+                then
+                    info "'wireproxy_bg' pid=${WIREPROXY_BG_PID} was successfully stopped"
+                else
+                    error "'wireproxy_bg' pid=${WIREPROXY_BG_PID} stop error=${?}"
+                fi
+            fi
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                if [ -v wireproxy_last_keepalive["${_peer_name}"] ]
+                then
+                    echo "${wireproxy_last_keepalive["${_peer_name}"]}" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}"
+                fi
+            done
             ;;
         start)
             info
@@ -1320,116 +1340,122 @@ function wireproxy_interface() {
                 wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
             fi
 
-            declare -g -a WIREPROXY_PROC
+            wireproxy_generate_config_file > "${WGQ_CONFIG_FILE}"
 
-            coproc WIREPROXY_PROC ("${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(wireproxy_generate_config_file) 2>&1)
-            local pid="${!}"
+            cat "${WGQ_CONFIG_FILE}" >&${WT_LOG_TRACE}
 
-            WIREPROXY_PROC[2]="${pid}"
+            exec {WIREPROXY_FD}< <(exec "${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1)
+            WIREPROXY_PID="${!}"
             ;;
         stop)
-            if [[ ! -v WIREPROXY_PROC ]]
-            then
-                info "'wireproxy' was not running"
-                return 0
-            fi
-
-            local out="${WIREPROXY_PROC[1]}"
-            local pid="${WIREPROXY_PROC[2]}"
-
             rm -f "${WIREPROXY_READY_FILE}"
 
-            if kill -TERM "${pid}"
+            if [[ ! -v WIREPROXY_PID ]]
             then
-                info "'wireproxy' pid=${pid} was successfully stopped"
+                info "'wireproxy' was not running"
             else
-                error "'wireproxy' pid=${pid} stop error=${?}"
+                if kill -TERM "${WIREPROXY_PID}"
+                then
+                    info "'wireproxy' pid=${WIREPROXY_PID} was successfully stopped"
+                else
+                    error "'wireproxy' pid=${WIREPROXY_PID} stop error=${?}"
+                fi
+
             fi
 
-            exec {out}>&- || true
-            unset WIREPROXY_PROC || true
+            while wireproxy_interface process_log
+            do
+                :
+            done
             ;;
         run)
-            local line
+            trap "wireproxy_interface stop" "EXIT"
 
-            if [[ -f "${WIREPROXY_RELOAD_FILE}" && -f "${WIREPROXY_READY_FILE}" ]]
-            then
-                rm -f "${WIREPROXY_RELOAD_FILE}"
-                wireproxy_interface stop
-                wireproxy_interface start
-            fi
+            wireproxy_interface start
 
-            while true
+            while wireproxy_interface process_log
             do
-                # TODO break on max num of messages
-                #
-
-                if [[ "${running}" == "false" ]]
+                if [[ -f "${WIREPROXY_RELOAD_FILE}" && -f "${WIREPROXY_READY_FILE}" ]]
                 then
-                    break
-                fi
-
-                if [[ ! -v WIREPROXY_PROC ]]
-                then
-                    break
-                fi
-
-                if ! read -u "${WIREPROXY_PROC[0]}" -t 1 line
-                then
-                    break
-                fi
-
-                echo "${line}" | { grep "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
-                    | raw_log wireproxy trace 27
-
-                echo "${line}" | { grep -v "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
-                    | {
-                    case "${line}" in
-                        "DEBUG: "*|"ERROR: "*)
-                            raw_log wireproxy from_line 27
-                            ;;
-                        *)
-                            raw_log wireproxy from_line 20
-                    esac
-                }
-
-                if ! grep "peer(" <<<"${line}" > /dev/null
-                then
-                    case "${line}" in
-                        "DEBUG"*"Interface state was Down, requested Up, now Up")
-                            touch "${WIREPROXY_READY_FILE}"
-                            info "ready"
-                            ;;
-                        "ERROR"*"address already in use")
-                            wirething set host_port 1024
-                            ;;
-                        "panic: listen tcp ${WIREPROXY_HEALTH_BIND}: bind: address already in use")
-                            # TODO disable health bind if address already in use
-                            ;;
-                    esac
-                    continue
-                else
-                    local index="$(echo "${line}" | grep -o " peer(.*) - ")"
-                    local peer_name="${wireproxy_name_table["${index}"]}"
-
-                    if [ "${peer_name}" == "" ]
-                    then
-                        error "peer_name="${peer_name:=''}" peer not found: ${line}"
-                        continue
-                    fi
-
-                    case "${line}" in
-                        *"Receiving keepalive packet")
-                            echo "${EPOCHSECONDS}" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
-                            ;;
-                        *"Received handshake response")
-                            echo "${EPOCHSECONDS}" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
-                            ;;
-                    esac
+                    rm -f "${WIREPROXY_RELOAD_FILE}"
+                    wireproxy_interface stop
+                    wireproxy_interface start
                 fi
             done
 
-            return 0
+            wireproxy_interface stop
+            ;;
+        process_log)
+            local line
+
+            if [[ ! -v WIREPROXY_FD ]]
+            then
+                return 1
+            fi
+
+            if ! read -u "${WIREPROXY_FD}" line
+            then
+                return 1
+            fi
+
+            echo "${line}" | { grep "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+                | raw_log wireproxy trace 27
+
+            echo "${line}" | { grep -v "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+                | {
+                case "${line}" in
+                    "DEBUG: "*|"ERROR: "*)
+                        raw_log wireproxy from_line 27
+                        ;;
+                    *)
+                        raw_log wireproxy from_line 20
+                esac
+            }
+
+            if ! grep "peer(" <<<"${line}" > /dev/null
+            then
+                case "${line}" in
+                    "DEBUG"*"Interface state was Down, requested Up, now Up")
+                        touch "${WIREPROXY_READY_FILE}"
+                        info "ready"
+                        ;;
+                    "ERROR"*"address already in use")
+                        wirething set host_port 1024
+                        ;;
+                    "panic: listen tcp ${WIREPROXY_HEALTH_BIND}: bind: address already in use")
+                        # TODO disable health bind if address already in use
+                        ;;
+                esac
+            else
+                local index="$(echo "${line}" | grep -o " peer(.*) - ")"
+                local peer_name="${wireproxy_name_table["${index}"]}"
+
+                if [ "${peer_name}" == "" ]
+                then
+                    error "peer_name="${peer_name:=''}" peer not found: ${line}"
+                    continue
+                fi
+
+                case "${line}" in
+                    *"Receiving keepalive packet")
+                        event fire "${peer_name} keepalive ${EPOCHSECONDS}"
+                        ;;
+                    *"Received handshake response")
+                        event fire "${peer_name} keepalive ${EPOCHSECONDS}"
+                        ;;
+                esac
+            fi
+            ;;
+        event)
+            local peer_name="${1}" && shift
+            local event="${1}" && shift
+
+            case "${event}" in
+                keepalive)
+                    local keepalive="${1}" && shift
+                    wireproxy_last_keepalive["${peer_name}"]="${keepalive}"
+                    ;;
+            esac
             ;;
         set)
             local name="${1}" && shift
@@ -1461,35 +1487,24 @@ function wireproxy_interface() {
                 peer_status)
                     local peer_name="${1}" && shift
 
-                    {
-                        cat "${WT_PEER_LAST_KEEPALIVE_PATH}/${peer_name}"
-                    } | {
-                        read last_keepalive
+                    local keepalive_delta="$((${EPOCHSECONDS} - ${wireproxy_last_keepalive["${peer_name}"]}))"
 
-                        local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
+                    local result="offline"
 
-                        local result
+                    if [[ ${keepalive_delta} -lt ${WIREPROXY_PEER_STATUS_TIMEOUT} ]]
+                    then
+                        result="online"
+                    fi
 
-                        if [[ ${keepalive_delta} -lt ${WIREPROXY_PEER_STATUS_TIMEOUT} ]]
-                        then
-                            result="online"
-                        else
-                            result="offline"
-                        fi
+                    debug "peer_status ${result} last_keepalive=${wireproxy_last_keepalive["${peer_name}"]} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
 
-                        debug "peer_status ${result} last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
-
-                        echo "${result}"
-                    }
+                    echo "${result}"
                     ;;
                 host_status)
                     {
-                        find "${WT_PEER_LAST_KEEPALIVE_PATH}" -type f
-                    } | {
-                        echo "0"
-                        while read peer_keepalive_file
+                        for _peer_name in ${config["peer_name_list"]}
                         do
-                            cat "${peer_keepalive_file}"
+                            echo "${wireproxy_last_keepalive["${_peer_name}"]}"
                         done
                     } | sort -n | tail -n 1 | {
                         read last_keepalive
@@ -1497,13 +1512,11 @@ function wireproxy_interface() {
                         local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
 
                         debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
-                        local result
+                        local result="offline"
 
                         if [[ ${keepalive_delta} -lt ${WIREPROXY_HOST_STATUS_TIMEOUT} ]]
                         then
                             result="online"
-                        else
-                            result="offline"
                         fi
 
                         debug "host_status ${result}"
