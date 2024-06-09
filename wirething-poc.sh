@@ -6,11 +6,11 @@ umask 077
 
 export LC_ALL=C
 
-# bash compat
+# bash
 
-# changelog:    https://github.com/bminor/bash/blob/master/NEWS
-# bash changes: https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
-# ${EPOCHSECONDS} requires bash 5.0
+## changelog:    https://github.com/bminor/bash/blob/master/NEWS
+## bash changes: https://web.archive.org/web/20230401195427/https://wiki.bash-hackers.org/scripting/bashchanges
+## ${EPOCHSECONDS} requires bash 5.0
 
 if ! [[ (${BASH_VERSINFO[0]} -gt 5) ||
         (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -ge 0) ]]
@@ -21,7 +21,7 @@ then
     exit 1
 fi
 
-# set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
+## set: http://redsymbol.net/articles/unofficial-bash-strict-mode/
 
 set -o errexit  # -e Exit immediately if any command returns a non-zero status
 set -o errtrace # -E Make ERR trap work with shell functions
@@ -32,57 +32,330 @@ shopt -s expand_aliases  # Aliases are expanded on non interactive shell
 shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
 shopt -s execfail        # Don't exit if exec cannot execute the file
 
-# utils
+# base
 
-function base64linux() {
-    base64 -w 0 ${1:-}
-
-    if [ "${1:-}" == "" ]
-    then
-        echo ""
-    fi
+function die() {
+    echo "ERROR [---------] ${FUNCNAME[1]:-} ${action:-} ${*}" >&${err}
+    exit 1
 }
 
-function utils() {
+function os() {
     local action="${1}" && shift
 
     case "${action}" in
         deps)
-            echo "bash tr readlink base64 grep sed cat openssl ping"
-
-            case "${OSTYPE}" in
-                darwin*)
-                    ;;
-                linux*)
-                    ;;
-                *)
-                    die "OS *${OSTYPE}* not supported"
-            esac
+            echo "ping base64"
             ;;
-        _init)
+        init)
             case "${OSTYPE}" in
                 darwin*)
                     alias ping="ping -c 1 -t 5"
                     ;;
                 linux*)
                     alias ping="ping -c 1 -W 5"
-                    alias base64='base64linux'
+                    alias base64='os linux_base64'
                     ;;
                 *)
                     die "OS *${OSTYPE}* not supported"
             esac
             ;;
+        linux_base64)
+            base64 -w 0 ${1:-}
+
+            if [ "${1:-}" == "" ]
+            then
+                echo ""
+            fi
+            ;;
     esac
 }
 
-utils _init
+os init
+
+function sys() {
+    local sig_action="${action:-}"
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            echo "id pkill"
+            ;;
+        init)
+            SYS_PID="${BASHPID}"
+
+            exec {null}<>/dev/null
+            exec {err}>&2
+
+            if [[ "${JOURNAL_STREAM:-}" != "" || "${SVDIR:-}" != "" ]]
+            then
+                SYS_LOG_TIME="false"
+            else
+                SYS_LOG_TIME="true"
+            fi
+
+            if [ "${SYS_LOG_TIME}" == "true" ]
+            then
+                alias sys_log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
+            else
+                alias sys_log='echo'
+            fi
+            ;;
+        is_running)
+            if [ "${_sys_running}" == "true" ]
+            then
+                return 0
+            else
+                return 1
+            fi
+            ;;
+        is_root)
+            if [ "$(id -u)" == 0 ]
+            then
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        trap)
+            trap "sys signal \"${1}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\" \"${?:-null}\"" "${1}"
+            ;;
+        set_error_path)
+            _sys_error_path="${1}"
+            ;;
+        set_on_exit)
+            _sys_on_exit="${@}"
+            ;;
+        start)
+            if [[ ! -v _sys_error_path ]]
+            then
+                die "'sys set_error_path' was not called"
+            fi
+
+            if [[ ! -v _sys_on_exit ]]
+            then
+                die "'sys set_on_exit' was not called"
+            fi
+
+            _sys_running="true"
+
+            for _signal in EXIT ERR SIGTERM SIGINT SIGHUP SIGPIPE
+            do
+                sys trap "${_signal}"
+            done
+            ;;
+        signal)
+            trap "" SIGPIPE
+            trap "" ERR
+
+            local signal="${1}" && shift
+            local lineno="${1:-''}    " && shift
+            local funcname="${1:-funcname=''}" && shift
+            local result="${1:-''}" && shift
+            local action="${sig_action:-${action:-action=''}}"
+            local was_running="${_sys_running}"
+            local signal_str="${signal}    "
+
+            case "${signal}" in
+                SIGTERM|SIGHUP)
+                    trap "" ${signal}
+                    _sys_running="false"
+
+                    pkill -TERM -g "${SYS_PID}"
+                    ;;
+                SIGINT)
+                    trap "" ${signal}
+                    _sys_running="false"
+
+                    if [ -t 0 ]
+                    then
+                        echo "" >&0 2>&${null} || true
+                    fi
+                    ;;
+            esac
+
+            if ! sys signal_log >&${err} 2>&${null}
+            then
+                local err_file="${_sys_error_path}/$(date -I).log"
+
+                sys signal_log >> "${err_file}"
+
+                if [ -t 0 ]
+                then
+                    sys signal_stderr_msg "tty" >> "${err_file}"
+                    exec {tty}>&0
+                else
+                    sys signal_stderr_msg "${err_file}" >> "${err_file}"
+                    exec {tty}>> "${err_file}"
+                fi
+
+                exec {err}>&-
+                exec {err}>&${tty}
+            fi
+
+            case "${signal}" in
+                EXIT)
+                    trap "" ${signal}
+                    ${_sys_on_exit}
+                    ;;
+            esac
+
+            sys trap SIGPIPE
+            sys trap ERR
+
+            return 0
+            ;;
+        signal_log)
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "INFO signal=${signal_str::7} was_running=${was_running/true/true } is_running=${_sys_running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
+            ;;
+        signal_stderr_msg)
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "ERROR Error writing to stderr fd=${err}, redirecting stderr to ${1}"
+            ;;
+    esac
+}
+
+sys init
+
+function log() {
+    local log_action="${1}" && shift
+
+    case "${log_action}" in
+        deps)
+            ;;
+        init)
+            WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
+
+            log_prefix=""
+
+            WT_LOG_TRACE="${null}"
+            WT_LOG_DEBUG="${null}"
+            WT_LOG_INFO="${err}"
+            WT_LOG_ERROR="${err}"
+
+            export PS4='+ :${LINENO:-} ${FUNCNAME[0]:-}(): '
+
+            case "${WT_LOG_LEVEL}" in
+                trace)
+                    WT_LOG_TRACE="${err}"
+                    WT_LOG_DEBUG="${err}"
+                    ;;
+                debug)
+                    WT_LOG_DEBUG="${err}"
+                    ;;
+                info)
+                    ;;
+                error)
+                    WT_LOG_INFO="${null}"
+                    ;;
+                *)
+                    die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
+            esac
+
+            alias short="log short"
+            alias short4="log short4"
+            alias format_time="log format_time"
+
+            alias debug="log debug"
+            alias info="log info"
+            alias error="log error"
+
+            alias raw_trace="log raw_trace"
+            alias hex_raw_trace="log hex_raw_trace"
+            alias raw_log="log raw_log"
+            ;;
+        short4)
+            echo "${1::4}"
+            ;;
+        short)
+            echo "${1::9}"
+            ;;
+        format_time)
+            local seconds="${1}"
+            local hours
+
+            ((hours = seconds / 3600)) || true
+            ((seconds %= 3600)) || true
+
+            printf "%.2u:%(%M:%S)T" "${hours}" "${seconds}"
+            ;;
+        debug)
+            sys_log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
+            ;;
+        info)
+            sys_log "INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_INFO} || true
+            ;;
+        error)
+            sys_log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_ERROR} || true
+            ;;
+        raw_trace)
+            sys_log "TRACE" >&${WT_LOG_TRACE} || true
+            cat >&${WT_LOG_TRACE} || true
+            ;;
+        hex_raw_trace)
+            sys_log "TRACE" >&${WT_LOG_TRACE} || true
+            hexdump -C >&${WT_LOG_TRACE} || true
+            ;;
+        raw_log_set_level)
+            local _level
+
+            if [ "${level}" == "from_line" ]
+            then
+                _level="${line}"
+            else
+                _level="${level}"
+            fi
+
+            case "${_level}" in
+                trace*|TRACE*)
+                    level_fd="${WT_LOG_TRACE}"
+                    level_name="TRACE"
+                    ;;
+                debug*|DEBUG*)
+                    level_fd="${WT_LOG_DEBUG}"
+                    level_name="DEBUG"
+                    ;;
+                info*|INFO*)
+                    level_fd="${WT_LOG_INFO}"
+                    level_name="INFO "
+                    ;;
+                error*|ERROR*)
+                    level_fd="${WT_LOG_ERROR}"
+                    level_name="ERROR"
+                    ;;
+                *)
+                    level_fd="${WT_LOG_ERROR}"
+                    level_name="ERROR"
+            esac
+            ;;
+        raw_log)
+            local app="${1}" && shift
+            local level="${1}" && shift
+            local start_index="${1:-0}" && shift
+
+            local line=""
+            local level_fd=""
+            local level_name=""
+
+            if [ "${level}" == "from_line" ]
+            then
+                while read line
+                do
+                    log raw_log_set_level
+                    sys_log "${level_name} [${app}] ${line:${start_index}}" >&${level_fd} || true
+                done
+            else
+                log raw_log_set_level
+                cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level_name} [${app}] ")," >&${level_fd} || true
+            fi
+            ;;
+    esac
+}
+
+log init
+
+# utils
 
 function options() {
     set | grep "_${1} ()" | sed "s,_${1} (),," | tr -d "\n"
-}
-
-function set_pid() {
-    PID="${BASHPID:-${$}}"
 }
 
 function capture() {
@@ -98,11 +371,6 @@ function capture() {
             exec {capture[1]}>&-
             ;;
     esac
-}
-
-function log_dev() {
-    exec {null}<>/dev/null
-    exec {err}>&2
 }
 
 # udp
@@ -145,150 +413,6 @@ function udp() {
             head -n 1 <&${UDP_SOCKET} || true
             ;;
     esac
-}
-
-# log
-
-function log_default_time() {
-    if [[ "${JOURNAL_STREAM:-}" != "" || "${SVDIR:-}" != "" ]]
-    then
-        echo -n "false"
-    else
-        echo -n "true"
-    fi
-}
-
-function log_init() {
-    WT_LOG_TIME="${WT_LOG_TIME:-$(log_default_time)}"
-    WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
-
-    log_prefix=""
-
-    log_dev
-
-    WT_LOG_TRACE="${null}"
-    WT_LOG_DEBUG="${null}"
-    WT_LOG_INFO="${err}"
-    WT_LOG_ERROR="${err}"
-
-    export PS4='+ :${LINENO:-} ${FUNCNAME[0]:-}(): '
-
-    case "${WT_LOG_LEVEL}" in
-        trace)
-            WT_LOG_TRACE="${err}"
-            WT_LOG_DEBUG="${err}"
-            ;;
-        debug)
-            WT_LOG_DEBUG="${err}"
-            ;;
-        info)
-            ;;
-        error)
-            WT_LOG_INFO="${null}"
-            ;;
-        *)
-            die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
-    esac
-
-    if [ "${WT_LOG_TIME}" == "true" ]
-    then
-        alias log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
-    else
-        alias log='echo'
-    fi
-}
-
-log_init
-
-function raw_trace() {
-    log "TRACE" >&${WT_LOG_TRACE} || true
-    cat >&${WT_LOG_TRACE} || true
-}
-
-function hex_raw_trace() {
-    log "TRACE" >&${WT_LOG_TRACE} || true
-    hexdump -C >&${WT_LOG_TRACE} || true
-}
-
-function raw_log_set_level() {
-    local _level
-
-    if [ "${level}" == "from_line" ]
-    then
-        _level="${line}"
-    else
-        _level="${level}"
-    fi
-
-    case "${_level}" in
-        trace*|TRACE*)
-            level_fd="${WT_LOG_TRACE}"
-            level_name="TRACE"
-            ;;
-        debug*|DEBUG*)
-            level_fd="${WT_LOG_DEBUG}"
-            level_name="DEBUG"
-            ;;
-        info*|INFO*)
-            level_fd="${WT_LOG_INFO}"
-            level_name="INFO "
-            ;;
-        error*|ERROR*)
-            level_fd="${WT_LOG_ERROR}"
-            level_name="ERROR"
-            ;;
-        *)
-            level_fd="${WT_LOG_ERROR}"
-            level_name="ERROR"
-    esac
-}
-
-function raw_log() {
-    local app="${1}" && shift
-    local level="${1}" && shift
-    local start_index="${1:-0}" && shift
-
-    local line=""
-    local level_fd=""
-    local level_name=""
-
-    if [ "${level}" == "from_line" ]
-    then
-        while read line
-        do
-            raw_log_set_level
-            log "${level_name} [${app}] ${line:${start_index}}" >&${level_fd} || true
-        done
-    else
-        raw_log_set_level
-        cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level_name} [${app}] ")," >&${level_fd} || true
-    fi
-}
-
-function debug() {
-    log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
-}
-
-function info() {
-    log "INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_INFO} || true
-}
-
-function error() {
-    log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_ERROR} || true
-}
-
-function die() {
-    action="${FUNCNAME[1]:-} ${action:-}"
-    error "${*}"
-    exit 1
-}
-
-function short4() {
-    echo "${1::4}"
-}
-
-function short() {
-    echo "${1::9}"
 }
 
 # store
@@ -1969,7 +2093,7 @@ function gpg_ephemeral_encryption() {
                 gpg --decrypt ${GPG_OPTIONS} \
                     --local-user "${config["host_gpg_id"]}" \
                     2>&${capture[1]} \
-                    || error "gpg returns ${?}"
+                    || debug "gpg returns ${?}"
 
                 capture stop
 
@@ -1977,7 +2101,7 @@ function gpg_ephemeral_encryption() {
 
                 if grep -iq "Good signature" <<<"${gpg_buffer[*]}"
                 then
-                    (IFS=''; echo -en "${gpg_buffer[*]}";) | raw_log gpg debug 5
+                    (IFS=''; echo -en "${gpg_buffer[*]}";) | grep -v "Checksum error" | raw_log gpg debug 5
                     return 0
                 else
                     (IFS=''; echo -en "${gpg_buffer[*]}";) | raw_log gpg error 5
@@ -3134,7 +3258,9 @@ wt_optional_list=(
 )
 
 wt_others_list=(
-    utils
+    os
+    sys
+    log
     udp
     wirething
     host
@@ -3167,7 +3293,6 @@ function wt_others_for_each() {
 }
 
 function wirething_main() {
-    local sig_action="${action:-}"
     local action="${1}" && shift
 
     case "${action}" in
@@ -3204,22 +3329,17 @@ function wirething_main() {
         init)
             info
 
-            running="true"
-
-            wirething_main trap_signals
-
-            set_pid
-            WT_PID="${PID}"
+            WT_PID="${SYS_PID}"
 
             WT_CONFIG_PATH="${WT_CONFIG_PATH:-${PWD}}"
             WT_STATE_PATH="${WT_CONFIG_PATH}/state"
             WT_ERROR_PATH="${WT_CONFIG_PATH}/error"
 
-            if [ "$(id -u)" != 0 ]
+            if sys is_root
             then
-                WT_RUN_PATH="${WT_RUN_PATH:-${WT_CONFIG_PATH}/run}"
-            else
                 WT_RUN_PATH="${WT_RUN_PATH:-/var/run/wirething}"
+            else
+                WT_RUN_PATH="${WT_RUN_PATH:-${WT_CONFIG_PATH}/run}"
             fi
 
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
@@ -3229,88 +3349,15 @@ function wirething_main() {
 
             wirething_main deps check
 
+            sys set_error_path "${WT_ERROR_PATH}"
+            sys set_on_exit "wirething_main down"
+            sys start
+
             config init
             tasks init
 
             wt_type_for_each init
             wt_others_for_each init
-
-            ;;
-        signal_log)
-            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "INFO signal=${signal_str::7} was_running=${was_running/true/true } is_running=${running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
-            ;;
-        signal_stderr_msg)
-            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "ERROR Error writing to stderr fd=${err}, redirecting stderr to ${1}"
-            ;;
-        signal)
-            trap "" SIGPIPE
-            trap "" ERR
-
-            local signal="${1}" && shift
-            local lineno="${1:-''}    " && shift
-            local funcname="${1:-funcname=''}" && shift
-            local result="${1:-''}" && shift
-            local action="${sig_action:-action=''}"
-            local was_running="${running}"
-            local signal_str="${signal}    "
-
-            case "${signal}" in
-                SIGTERM|SIGHUP)
-                    trap "" ${signal}
-                    running="false"
-                    pkill -TERM -g "${WT_PID}"
-                    ;;
-                SIGINT)
-                    trap "" ${signal}
-                    running="false"
-
-                    if [ -t 0 ]
-                    then
-                        echo "" >&0 2>&${null} || true
-                    fi
-                    ;;
-            esac
-
-            if ! wirething_main signal_log >&${err} 2>&${null}
-            then
-                local err_file="${WT_ERROR_PATH}/$(date -I).log"
-
-                wirething_main signal_log >> "${err_file}"
-
-                if [ -t 0 ]
-                then
-                    wirething_main signal_stderr_msg "tty" >> "${err_file}"
-                    exec {tty}>&0
-                else
-                    wirething_main signal_stderr_msg "${err_file}" >> "${err_file}"
-                    exec {tty}>> "${err_file}"
-                fi
-
-                exec {err}>&-
-                exec {err}>&${tty}
-            fi
-
-            case "${signal}" in
-                EXIT)
-                    trap "" ${signal}
-                    wirething_main down
-                    ;;
-            esac
-
-            wirething_main trap SIGPIPE
-            wirething_main trap ERR
-
-            return 0
-            ;;
-        trap)
-            trap "wirething_main signal \"${1}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\" \"${?:-null}\"" "${1}"
-            ;;
-        trap_signals)
-            info
-            for _signal in EXIT ERR SIGTERM SIGINT SIGHUP SIGPIPE
-            do
-                wirething_main trap "${_signal}"
-            done
             ;;
         up)
             info
@@ -3336,6 +3383,8 @@ function wirething_main() {
             peer start
             ;;
         down)
+            info
+
             peer stop
             host stop
 
@@ -3360,7 +3409,7 @@ function wirething_main() {
         loop)
             info "start"
 
-            while [ "${running}" == "true" ]
+            while sys is_running
             do
                 if ! sleep 5
                 then
