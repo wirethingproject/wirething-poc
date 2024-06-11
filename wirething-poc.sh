@@ -78,7 +78,7 @@ function sys() {
 
     case "${action}" in
         deps)
-            echo "id pkill"
+            echo "id"
             ;;
         init)
             SYS_PID="${BASHPID}"
@@ -159,8 +159,6 @@ function sys() {
                 SIGTERM|SIGHUP)
                     trap "" ${signal}
                     _sys_running="false"
-
-                    pkill -TERM -g "${SYS_PID}"
                     ;;
                 SIGINT)
                     trap "" ${signal}
