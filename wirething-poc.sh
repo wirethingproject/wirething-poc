@@ -349,7 +349,7 @@ function log() {
                 done
             else
                 log raw_log_set_level
-                cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(log "${level_name} [${app}] ")," >&${level_fd} || true
+                cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(sys_log "${level_name} [${app}] ")," >&${level_fd} || true
             fi
             ;;
     esac
