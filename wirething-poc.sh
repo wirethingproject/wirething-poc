@@ -203,7 +203,14 @@ function sys() {
             return 0
             ;;
         signal_log)
-            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "INFO signal=${signal_str::7} was_running=${was_running/true/true } is_running=${_sys_running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
+            local level="INFO "
+
+            if [ "${signal}" == "ERR" ]
+            then
+                level="ERROR"
+            fi
+
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "${level} signal=${signal_str::7} was_running=${was_running/true/true } is_running=${_sys_running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
             ;;
         signal_stderr_msg)
             printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "ERROR Error writing to stderr fd=${err}, redirecting stderr to ${1}"
