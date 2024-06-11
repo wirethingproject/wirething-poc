@@ -1185,7 +1185,7 @@ EOF
 
         if [ -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" ]
         then
-            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}")
+            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 1 -d " ")
             if [ "${endpoint}" != "" ]
             then
             cat <<EOF
@@ -1205,7 +1205,7 @@ function wg_quick_interface() {
             ;;
         deps)
             wg_interface deps
-            echo "wg-quick wg cat grep rm id"
+            echo "wg-quick wg cat cut grep rm id"
             case "${OSTYPE}" in
                 darwin*)
                     echo "wireguard-go"
@@ -1957,12 +1957,82 @@ function ntfy_pubsub() {
                 esac
             }
             ;;
+        subscribe_start)
+            local topic="${1}" && shift
+            local since="${1}" && shift
+            local format="${1:-json}" && shift
+
+            debug "${topic}"
+
+            debug "curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - ${NTFY_URL}/${topic}/${format}?since=${since}"
+            exec {NTFY_SUBSCRIBE_FD}< <(exec curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
+                    "${NTFY_URL}/${topic}/${format}?since=${since}")
+            NTFY_SUBSCRIBE_PID="${!}"
+            ;;
+        subscribe_stop)
+            if [[ ! -v NTFY_SUBSCRIBE_PID ]]
+            then
+                info "'ntfy' was not running"
+            else
+                if kill -TERM "${NTFY_SUBSCRIBE_PID}"
+                then
+                    info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was successfully stopped"
+                else
+                    error "'ntfy' pid=${NTFY_SUBSCRIBE_PID} stop error=${?}"
+                fi
+
+            fi
+            ;;
+        subscribe_run)
+            while ntfy_pubsub subscribe_process
+            do
+                :
+            done
+            ;;
+        subscribe_process)
+            local subscribe_response
+
+            if [[ ! -v NTFY_SUBSCRIBE_FD ]]
+            then
+                return 1
+            fi
+
+            if ! read -t 60 -u "${NTFY_SUBSCRIBE_FD}" subscribe_response
+            then
+                return 1
+            fi
+
+            echo "${subscribe_response}" | hexdump -C | raw_trace
+
+            case "${subscribe_response}" in
+                "")
+                    ;;
+                "curl"*"timed out"*)
+                    debug "$(short "${topic}") response: ${subscribe_response}"
+                    return 1
+                    ;;
+                "curl"*)
+                    error "$(short "${topic}") response: ${subscribe_response}"
+                    sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
+                    return 1
+                    ;;
+                "{"*"error"*)
+                    error "$(short "${topic}") response: ${subscribe_response}"
+                    sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
+                    return 1
+                    ;;
+                *)
+                    echo "${subscribe_response}"
+            esac
+            ;;
         subscribe)
             local topic="${1}" && shift
             local since="${1}" && shift
             local format="${1:-json}" && shift
 
             debug "${topic} starting"
+
+            debug "curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - ${NTFY_URL}/${topic}/${format}?since=${since}"
 
             {
                 curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
@@ -2244,7 +2314,7 @@ function wirething() {
 
     case "${action}" in
         deps)
-            echo "mkdir cat hexdump jq"
+            echo "mkdir cat cut hexdump jq"
             ;;
         init)
             info
@@ -2284,18 +2354,18 @@ function wirething() {
                 fi
             done
 
-            coproc WIRETHING_BG (wirething subscribe_encrypted_peer_endpoint)
+            coproc WIRETHING_SUBSCRIBE_BG (wirething subscribe_encrypted_peer_endpoint)
             ;;
         down)
-            if [[ ! -v WIRETHING_BG_PID ]]
+            if [[ ! -v WIRETHING_SUBSCRIBE_BG_PID ]]
             then
-                info "'wireproxy_bg' was not running"
+                info "'wirething_subscribe_bg' was not running"
             else
-                if kill -TERM "${WIRETHING_BG_PID}"
+                if kill -TERM "${WIRETHING_SUBSCRIBE_BG_PID}"
                 then
-                    info "'wireproxy_bg' pid=${WIRETHING_BG_PID} was successfully stopped"
+                    info "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} was successfully stopped"
                 else
-                    error "'wireproxy_bg' pid=${WIRETHING_BG_PID} stop error=${?}"
+                    error "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} stop error=${?}"
                 fi
             fi
             ;;
@@ -2401,9 +2471,10 @@ function wirething() {
                 peer_endpoint)
                     local peer_name="${1}" && shift
                     local endpoint="${1}" && shift
+                    local timestamp="${1:-${EPOCHSECONDS}}" && shift
 
                     info "peer_endpoint ${peer_name} ${endpoint}"
-                    echo "${endpoint}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}"
+                    echo "${endpoint} ${timestamp}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}"
 
                     interface set peer_endpoint "${peer_name}" "${endpoint}"
                     ;;
@@ -2425,9 +2496,16 @@ function wirething() {
                 peer_endpoint)
                     local peer_name="${1}" && shift
 
-                    local endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}" 2>&${WT_LOG_DEBUG} || echo)"
+                    local endpoint="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 1 -d " ")"
                     debug "peer_endpoint ${peer_name} ${endpoint:-''}"
                     echo "${endpoint}"
+                    ;;
+                peer_endpoint_update_time)
+                    local peer_name="${1}" && shift
+
+                    local timestamp="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 2 -d " ")"
+                    debug "peer_endpoint_update_time ${peer_name} ${timestamp:-''}"
+                    echo "${timestamp:-0}"
                     ;;
             esac
             ;;
@@ -2512,38 +2590,8 @@ function wirething() {
         subscribe_encrypted_peer_endpoint)
             info
 
-            declare -A topic_index
-            declare -A peer_endpoint_list
-
-            for _peer_name in ${config["peer_name_list"]}
-            do
-                peer_endpoint_list["${_peer_name}"]="$(wirething get peer_endpoint "${_peer_name}")"
-                local topic="$(topic subscribe "${_peer_name}")"
-                topic_index["${topic}"]="${_peer_name}"
-
-                pubsub poll "${topic}" "all" "json" | {
-                    read line
-                    debug "${line}"
-                    wirething subscribe_encrypted_peer_endpoint_process
-                }
-            done
-
             while true
             do
-                topic_list="$(IFS=","; echo "${!topic_index[*]}")"
-
-                NTFY_SUBSCRIBE_TIMEOUT="$(topic next)"
-
-                pubsub subscribe "${topic_list}" "1m" "json" | {
-                    while read line
-                    do
-                        debug "${line}"
-                        wirething subscribe_encrypted_peer_endpoint_process
-                    done
-                }
-
-                unset topic_index
-
                 declare -A topic_index
 
                 for _peer_name in ${config["peer_name_list"]}
@@ -2551,7 +2599,41 @@ function wirething() {
                     local topic="$(topic subscribe "${_peer_name}")"
                     topic_index["${topic}"]="${_peer_name}"
                 done
+
+                topic_list="$(IFS=","; echo "${!topic_index[*]}")"
+
+                wirething subscribe_encrypted_peer_endpoint_run
+
+                unset topic_index
             done
+            ;;
+        subscribe_encrypted_peer_endpoint_run)
+            trap "pubsub subscribe_stop" "EXIT"
+
+            NTFY_SUBSCRIBE_TIMEOUT="$(topic next)"
+
+            pubsub subscribe_start "${topic_list}" "all" "json"
+
+            pubsub subscribe_run | {
+                declare -A peer_endpoint_list
+
+                for _peer_name in ${config["peer_name_list"]}
+                do
+                    peer_endpoint_list["${_peer_name}"]="$(wirething get peer_endpoint "${_peer_name}")"
+                    peer_endpoint_list["${_peer_name}_update_time"]="$(wirething get peer_endpoint_update_time "${_peer_name}")"
+                done
+
+                while read line
+                do
+                    debug "${line}"
+
+                    wirething subscribe_encrypted_peer_endpoint_process
+                done
+            }
+
+            pubsub subscribe_stop
+
+            trap "" "EXIT"
             ;;
         subscribe_encrypted_peer_endpoint_process)
             local event="$(echo "${line}" | jq -r ".event")"
@@ -2559,21 +2641,30 @@ function wirething() {
             if [ "${event}" == "message" ]
             then
                 local topic="$(echo "${line}" | jq -r ".topic")"
+                local event_time="$(echo "${line}" | jq -r ".time")"
                 local encrypted_message="$(echo "${line}" | jq -r ".message")"
 
                 local peer_name="${topic_index[${topic}]}"
-                local peer_endpoint="$(encryption decrypt "${encrypted_message}")"
+                local new_peer_endpoint="$(encryption decrypt "${encrypted_message}")"
 
-                debug "${peer_name} ${peer_endpoint} ${peer_endpoint_list["${peer_name}"]}"
-
-                if [ "${peer_endpoint}" != "${peer_endpoint_list["${peer_name}"]}" ]
+                if [ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} ]
                 then
-                    peer_endpoint_list["${peer_name}"]="${peer_endpoint}"
-                    info "new peer endpoint ${peer_name} ${peer_endpoint}"
-                    event fire "${peer_name} new_peer_endpoint ${peer_endpoint}"
+                    debug "${peer_name} new published peer_endpoint=${new_peer_endpoint} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
+                else
+                    debug "${peer_name} old published peer_endpoint=${new_peer_endpoint} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
+                fi
+
+                if [[ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} &&
+                     "${new_peer_endpoint}" != "${peer_endpoint_list["${peer_name}"]}" ]]
+                then
+                    peer_endpoint_list["${peer_name}"]="${new_peer_endpoint}"
+                    peer_endpoint_list["${peer_name}_update_time"]="${event_time}"
+
+                    info "new peer endpoint ${peer_name} ${new_peer_endpoint}"
+                    event fire "${peer_name} new_peer_endpoint ${new_peer_endpoint} ${event_time}"
                 fi
             else
-                debug "${event}"
+                debug "event=${event}"
             fi
             ;;
         event)
@@ -2583,7 +2674,8 @@ function wirething() {
             case "${event}" in
                 new_peer_endpoint)
                     local endpoint="${1}" && shift
-                    wirething set peer_endpoint "${peer_name}" "${endpoint}"
+                    local event_time="${1}" && shift
+                    wirething set peer_endpoint "${peer_name}" "${endpoint}" "${event_time}"
                     ;;
             esac
             ;;
