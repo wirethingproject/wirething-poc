@@ -905,11 +905,11 @@ function event() {
             then
                 info "'event' was not running"
             else
-                if kill -TERM "${EVENT_PID}"
+                if kill -TERM "${EVENT_PID}" 2>&${null}
                 then
                     info "'event' pid=${EVENT_PID} was successfully stopped"
                 else
-                    error "'event' pid=${EVENT_PID} stop error=${?}"
+                    info "'event' pid=${EVENT_PID} was not running"
                 fi
             fi
             ;;
@@ -1441,11 +1441,11 @@ function wireproxy_interface() {
             then
                 info "'wireproxy_bg' was not running"
             else
-                if kill -TERM "${WIREPROXY_BG_PID}"
+                if kill -TERM "${WIREPROXY_BG_PID}" 2>&${null}
                 then
                     info "'wireproxy_bg' pid=${WIREPROXY_BG_PID} was successfully stopped"
                 else
-                    error "'wireproxy_bg' pid=${WIREPROXY_BG_PID} stop error=${?}"
+                    info "'wireproxy_bg' pid=${WIREPROXY_BG_PID} was not running"
                 fi
             fi
 
@@ -1483,11 +1483,11 @@ function wireproxy_interface() {
             then
                 info "'wireproxy' was not running"
             else
-                if kill -TERM "${WIREPROXY_PID}"
+                if kill -TERM "${WIREPROXY_PID}" 2>&${null}
                 then
                     info "'wireproxy' pid=${WIREPROXY_PID} was successfully stopped"
                 else
-                    error "'wireproxy' pid=${WIREPROXY_PID} stop error=${?}"
+                    info "'wireproxy' pid=${WIREPROXY_PID} was not running"
                 fi
 
             fi
@@ -1974,11 +1974,11 @@ function ntfy_pubsub() {
             then
                 info "'ntfy' was not running"
             else
-                if kill -TERM "${NTFY_SUBSCRIBE_PID}"
+                if kill -TERM "${NTFY_SUBSCRIBE_PID}" 2>&${null}
                 then
                     info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was successfully stopped"
                 else
-                    error "'ntfy' pid=${NTFY_SUBSCRIBE_PID} stop error=${?}"
+                    info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was not running"
                 fi
 
             fi
@@ -2119,7 +2119,7 @@ function gpg_ephemeral_encryption() {
             then
                 info "'gpg-agent' was successfully stopped"
             else
-                error "'gpg-agent' stop error=${?}"
+                info "'gpg-agent' was not running"
             fi
 
             if rm -rf "${GNUPGHOME}"
@@ -2365,7 +2365,7 @@ function wirething() {
                 then
                     info "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} was successfully stopped"
                 else
-                    error "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} stop error=${?}"
+                    info "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} was not running"
                 fi
             fi
             ;;
