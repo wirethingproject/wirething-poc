@@ -507,7 +507,7 @@ function udp() {
         close)
             exec {UDP_SOCKET}>&- || true
 
-            unset UDP_SOCKET
+            unset -v UDP_SOCKET
             ;;
         port)
             local host="${1}" && shift
@@ -800,7 +800,7 @@ EOF
                         }
 
                         rm -rf "${GNUPGHOME}"
-                        unset GNUPGHOME
+                        unset -v GNUPGHOME
                     })
                     ;;
             esac
@@ -1102,8 +1102,8 @@ function tasks() {
 
             debug "name=${name} now=${EPOCHSECONDS} next=${_tasks_next["${name}"]} frequency start stop task=${_tasks["${name}"]}"
 
-            unset _tasks["${name}"]
-            unset _tasks_next["${name}"]
+            unset -v _tasks["${name}"]
+            unset -v _tasks_next["${name}"]
             ;;
         run)
             local _name frequency start stop task next now
@@ -1974,8 +1974,8 @@ function stun_punch() {
             ;;
         close)
             debug
-            unset STUN_LOCAL_PORT
-            unset STUN_REMOTE_ENDPOINT
+            unset -v STUN_LOCAL_PORT
+            unset -v STUN_REMOTE_ENDPOINT
             ;;
     esac
 }
@@ -2715,7 +2715,7 @@ function wirething() {
 
                 wirething subscribe_encrypted_peer_endpoint_run
 
-                unset topic_index
+                unset -v topic_index
             done
             ;;
         subscribe_encrypted_peer_endpoint_run)
