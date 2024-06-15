@@ -34,11 +34,6 @@ shopt -s execfail        # Don't exit if exec cannot execute the file
 
 # base
 
-function die() {
-    echo "ERROR [---------] ${FUNCNAME[1]:-} ${action:-} ${*}" >&${err}
-    exit 1
-}
-
 function io() {
     local action="${1}" && shift
 
@@ -53,6 +48,7 @@ function io() {
 io init
 
 function os() {
+    local die_action="${action:-}"
     local action="${1}" && shift
 
     case "${action}" in
@@ -60,6 +56,10 @@ function os() {
             echo "ping base64"
             ;;
         init)
+            OS_PID="${BASHPID}"
+
+            alias die="os die"
+
             case "${OSTYPE}" in
                 darwin*)
                     alias ping="ping -c 1 -t 5"
@@ -69,8 +69,15 @@ function os() {
                     alias base64='os linux_base64'
                     ;;
                 *)
-                    die "OS *${OSTYPE}* not supported"
+                    os die "OS *${OSTYPE}* not supported"
             esac
+            ;;
+        die)
+            echo "ERROR [---------] ${FUNCNAME[1]:-} ${die_action:-} ${*}" >&${err}
+            os terminate
+            ;;
+        terminate)
+            pkill -TERM -g "${OS_PID}"
             ;;
         linux_base64)
             base64 -w 0 ${1:-}
@@ -94,8 +101,6 @@ function sys() {
             echo "id"
             ;;
         init)
-            SYS_PID="${BASHPID}"
-
             if [[ "${JOURNAL_STREAM:-}" != "" || "${SVDIR:-}" != "" ]]
             then
                 SYS_LOG_TIME="false"
@@ -3436,7 +3441,7 @@ function wirething_main() {
         init)
             info
 
-            WT_PID="${SYS_PID}"
+            WT_PID="${OS_PID}"
 
             WT_CONFIG_PATH="${WT_CONFIG_PATH:-${PWD}}"
             WT_STATE_PATH="${WT_CONFIG_PATH}/state"
