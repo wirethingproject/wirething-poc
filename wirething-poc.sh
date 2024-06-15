@@ -2432,7 +2432,6 @@ function wirething() {
             WT_HOST_PORT_FILE="${WT_STATE_PATH}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE_PATH}/host_endpoint"
             WT_PEER_ENDPOINT_PATH="${WT_STATE_PATH}/peer_endpoint"
-            WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE_PATH}/peer_last_keepalive"
             ;;
         up)
             info
@@ -2445,7 +2444,6 @@ function wirething() {
             fi
 
             mkdir -p "${WT_PEER_ENDPOINT_PATH}"
-            mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
 
             if [ ! -f "${WT_HOST_PORT_FILE}" ]
             then
@@ -3551,6 +3549,7 @@ function wirething_main() {
             fi
 
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
+            WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE_PATH}/peer_last_keepalive"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
 
             info "WT_PID=${WT_PID}"
@@ -3573,6 +3572,7 @@ function wirething_main() {
             mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_ERROR_PATH}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
+            mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
 
             config up
             event up
