@@ -39,6 +39,19 @@ function die() {
     exit 1
 }
 
+function io() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            exec {null}<>/dev/null
+            exec {err}>&2
+            ;;
+    esac
+}
+
+io init
+
 function os() {
     local action="${1}" && shift
 
@@ -82,9 +95,6 @@ function sys() {
             ;;
         init)
             SYS_PID="${BASHPID}"
-
-            exec {null}<>/dev/null
-            exec {err}>&2
 
             if [[ "${JOURNAL_STREAM:-}" != "" || "${SVDIR:-}" != "" ]]
             then
