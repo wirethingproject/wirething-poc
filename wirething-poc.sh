@@ -53,20 +53,57 @@ function os() {
 
     case "${action}" in
         deps)
-            echo "ping base64"
+            echo "ping"
+            case "${OSTYPE}" in
+                linux*)
+                    echo "base64"
+                    ;;
+            esac
+            ;;
+        optional)
+            case "${OSTYPE}" in
+                darwin*)
+                    echo "osascript"
+                    ;;
+                linux*)
+                    if [ -v TERMUX_VERSION ]
+                    then
+                        echo "termux-notification"
+                    fi
+                    ;;
+            esac
             ;;
         init)
             OS_PID="${BASHPID}"
 
             alias die="os die"
 
+            _os_ui_last_status=""
+
             case "${OSTYPE}" in
                 darwin*)
                     alias ping="ping -c 1 -t 5"
+                    alias ping_quick="ping -c 1 -t 1"
+
+                    if type -a osascript >&${null} 2>&${null}
+                    then
+                        alias ui="os darwin ui"
+                    else
+                        alias ui=":"
+                    fi
                     ;;
                 linux*)
                     alias ping="ping -c 1 -W 5"
-                    alias base64='os linux_base64'
+                    alias ping_quick="ping -c 1 -W 1"
+                    alias base64='os linux base64'
+
+                    if [ -v TERMUX_VERSION ] &&
+                        type -a termux-notification >&${null} 2>&${null}
+                    then
+                        alias ui="os termux ui"
+                    else
+                        alias ui=":"
+                    fi
                     ;;
                 *)
                     os die "OS *${OSTYPE}* not supported"
@@ -79,13 +116,72 @@ function os() {
         terminate)
             pkill -TERM -g "${OS_PID}"
             ;;
-        linux_base64)
-            base64 -w 0 ${1:-}
+        linux)
+            local command="${1}" && shift
 
-            if [ "${1:-}" == "" ]
-            then
-                echo ""
-            fi
+            case "${command}" in
+                base64)
+                    base64 -w 0 ${1:-}
+
+                    if [ "${1:-}" == "" ]
+                    then
+                        echo ""
+                    fi
+                    ;;
+            esac
+            ;;
+        termux)
+            local command="${1}" && shift
+
+            case "${command}" in
+                ui)
+                    local type="${1}" && shift
+                    local title="${1}" && shift
+                    local text="${1}" && shift
+
+                    case "${type}" in
+                        log)
+                            termux-notification -t "${title}" -c "${text}"
+                            ;;
+                        status)
+                            local group="${1}" && shift
+
+                            if [ "${group} ${title} ${text}" != "${_os_ui_last_status}" ]
+                            then
+                                termux-notification --group "${group}" -t "${title}" -c "${text}" \
+                                     --id "${group}" --ongoing --alert-once
+                                _os_ui_last_status="${group} ${title} ${text}"
+                            fi
+                            ;;
+                    esac
+                    ;;
+            esac
+            ;;
+        darwin)
+            local command="${1}" && shift
+
+            case "${command}" in
+                ui)
+                    local type="${1}" && shift
+                    local title="${1}" && shift
+                    local text="${1}" && shift
+
+                    case "${type}" in
+                        log)
+                            :
+                            ;;
+                        status)
+                            local group="${1}" && shift
+
+                            if [ "${group} ${title} ${text}" != "${_os_ui_last_status}" ]
+                            then
+                                osascript -e "display notification \"${text}\" with title \"${title}\""
+                                _os_ui_last_status="${group} ${title} ${text}"
+                            fi
+                            ;;
+                    esac
+                    ;;
+            esac
             ;;
     esac
 }
