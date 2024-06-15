@@ -1361,7 +1361,7 @@ function wg_quick_interface() {
             info "wg-quick up ${WGQ_CONFIG_FILE}"
             wg-quick up "${WGQ_CONFIG_FILE}" 2>&${WT_LOG_DEBUG}
 
-            cat "${WGQ_CONFIG_FILE}" >&${WT_LOG_TRACE}
+            cat "${WGQ_CONFIG_FILE}" | raw_trace
 
             case "${OSTYPE}" in
                 darwin*)
@@ -1413,6 +1413,7 @@ function wg_quick_interface() {
 # wireproxy interface
 
 function wireproxy_generate_config_file() {
+    local action=""
     debug
 
     wg_quick_generate_config_file
@@ -1582,7 +1583,7 @@ function wireproxy_interface() {
 
             wireproxy_generate_config_file > "${WGQ_CONFIG_FILE}"
 
-            cat "${WGQ_CONFIG_FILE}" >&${WT_LOG_TRACE}
+            cat "${WGQ_CONFIG_FILE}" | raw_trace
 
             exec {WIREPROXY_FD}< <(exec "${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1)
             WIREPROXY_PID="${!}"
@@ -1609,6 +1610,8 @@ function wireproxy_interface() {
             done
             ;;
         run)
+            info "up"
+
             trap "wireproxy_interface stop" "EXIT"
 
             wireproxy_interface start
@@ -1623,7 +1626,7 @@ function wireproxy_interface() {
                 fi
             done
 
-            wireproxy_interface stop
+            info "down"
             ;;
         process_log)
             local line
@@ -2226,7 +2229,7 @@ function gpg_ephemeral_encryption() {
                 return 0
             fi
 
-            if gpgconf --kill gpg-agent
+            if gpgconf --kill gpg-agent 2>&${null}
             then
                 info "'gpg-agent' was successfully stopped"
             else
@@ -2470,7 +2473,7 @@ function wirething() {
             then
                 info "'wirething_subscribe_bg' was not running"
             else
-                if kill -TERM "${WIRETHING_SUBSCRIBE_BG_PID}"
+                if kill -TERM "${WIRETHING_SUBSCRIBE_BG_PID}" 2>&${null}
                 then
                     info "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} was successfully stopped"
                 else
@@ -3011,6 +3014,7 @@ function host_task() {
                 read host_port < <(wirething get host_port)
 
                 local new_punch="failed"
+
                 if wirething punch_host_endpoint
                 then
                     new_punch="success"
@@ -3516,7 +3520,7 @@ function wirething_main() {
                 do
                     case "${option}" in
                         check)
-                            if ! type -P "${dep}" > /dev/null
+                            if ! type -P "${dep}" >&${null}
                             then
                                 wirething_main deps list
                                 die "check missing dependency: ${dep}"
