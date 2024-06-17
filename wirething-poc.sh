@@ -78,8 +78,6 @@ function os() {
 
             alias die="os die"
 
-            _os_ui_last_status=""
-
             case "${OSTYPE}" in
                 darwin*)
                     alias ping="ping -c 1 -t 5"
@@ -87,9 +85,9 @@ function os() {
 
                     if type -a osascript >&${null} 2>&${null}
                     then
-                        alias ui="os darwin ui"
+                        alias os_ui="os darwin ui"
                     else
-                        alias ui=":"
+                        alias os_ui=":"
                     fi
                     ;;
                 linux*)
@@ -100,9 +98,9 @@ function os() {
                     if [ -v TERMUX_VERSION ] &&
                         type -a termux-notification >&${null} 2>&${null}
                     then
-                        alias ui="os termux ui"
+                        alias os_ui="os termux ui"
                     else
-                        alias ui=":"
+                        alias os_ui=":"
                     fi
                     ;;
                 *)
@@ -146,12 +144,8 @@ function os() {
                         status)
                             local group="${1}" && shift
 
-                            if [ "${group} ${title} ${text}" != "${_os_ui_last_status}" ]
-                            then
-                                termux-notification --group "${group}" -t "${title}" -c "${text}" \
-                                     --id "${group}" --ongoing --alert-once
-                                _os_ui_last_status="${group} ${title} ${text}"
-                            fi
+                            termux-notification --group "${group}" -t "${title}" -c "${text}" \
+                                 --id "${group}" --ongoing --alert-once
                             ;;
                     esac
                     ;;
@@ -173,11 +167,7 @@ function os() {
                         status)
                             local group="${1}" && shift
 
-                            if [ "${group} ${title} ${text}" != "${_os_ui_last_status}" ]
-                            then
-                                osascript -e "display notification \"${text}\" with title \"${title}\""
-                                _os_ui_last_status="${group} ${title} ${text}"
-                            fi
+                            osascript -e "display notification \"${text}\" with title \"${title}\""
                             ;;
                     esac
                     ;;
@@ -1786,6 +1776,16 @@ function wireproxy_interface() {
         get)
             local name="${1}" && shift
             case "${name}" in
+                is_peer_local)
+                    local peer_name="${1}" && shift
+
+                    if grep -q "Endpoint = ${config["peer_wg_quick_local_ips_${peer_name}"]}" < "${WGQ_CONFIG_FILE}"
+                    then
+                        return 0
+                    else
+                        return 1
+                    fi
+                    ;;
                 peer_status)
                     local peer_name="${1}" && shift
 
@@ -1808,12 +1808,12 @@ function wireproxy_interface() {
 
                         for _peer_name in ${config["peer_name_list"]}
                         do
-                            if ! grep -q "Endpoint = ${config["peer_wg_quick_local_ips_${_peer_name}"]}" < "${WGQ_CONFIG_FILE}"
+                            if wireproxy_interface get is_peer_local "${_peer_name}"
                             then
+                                echo "0"
+                            else
                                 echo "${wireproxy_last_keepalive["${_peer_name}"]}"
                                 all_local="false"
-                            else
-                                echo "0"
                             fi
                         done
 
@@ -2990,6 +2990,92 @@ function wirething() {
     esac
 }
 
+# ui
+
+function ui() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            info
+
+            declare -g -A _ui_status_text=(
+                ["empty"]="starting"
+                ["start"]="starting"
+                ["wait"]="waiting"
+                ["offline"]="down"
+                ["online"]="up"
+                ["stop"]="stopped"
+            )
+
+            declare -g -A _ui_status_screen=(
+                ["empty"]="🙏🏿"
+                ["start"]="🙏🏿"
+                ["wait"]="🙏🏿"
+                ["offline"]="💔"
+                ["online"]="💚"
+                ["offline-local"]="🍎"
+                ["online-local"]="🍏"
+                ["stop"]="👋🏿"
+            )
+
+            _ui_last_status=""
+            ;;
+        before_status_changed)
+            local device_name="${1}" && shift
+            local new_status="${1}" && shift
+            local current_status="${1}" && shift
+            local current_status_timestamp="${1}" && shift
+
+            if [ "${current_status}" != "empty" ]
+            then
+                local status_time="$((${EPOCHSECONDS} - ${current_status_timestamp}))"
+                local title="${device_name} is ${_ui_status_text[${new_status}]}"
+                local text="${_ui_status_text[${current_status}]/ing/} time was $(format_time "${status_time}")"
+
+                info "${title}, ${text}"
+                os_ui log "${title}" "${text}"
+            fi
+            ;;
+        after_status_changed)
+            local group="wirething-host-status-${config["host_name"]}"
+            local title="Wirething $(host_state get_host_state_text)"
+            local text="${config["host_name"]} ${_ui_status_screen[$(host_state get_current_status)]}  |  "
+
+            local peer_status
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                peer_status="$(peer_state get_current_status "${_peer_name}")"
+
+                case "${peer_status}" in
+                    online|offline)
+                        if interface get is_peer_local "${_peer_name}"
+                        then
+                            peer_status="${peer_status}-local"
+                        fi
+                        ;;
+                esac
+
+                text+="${_peer_name} ${_ui_status_screen[${peer_status}]}  "
+            done
+
+            text="${text%  }"
+
+            debug "${title} ${group}"
+            debug "${text}"
+
+            if [ "${title} ${text} ${group}" != "${_ui_last_status}" ]
+            then
+                os_ui status "${title}" "${text}" "${group}"
+                _ui_last_status="${title} ${text} ${group}"
+            fi
+            ;;
+    esac
+}
+
+ui init
+
 # host status usecase
 
 function host_context() {
@@ -3012,48 +3098,47 @@ function host_state() {
         init)
             info
 
-            declare -g -A _host_state
-
             declare -g -A _host_event_transitions=(
-                ["host_start_start"]="on_host_start"
-                ["host_wait_wait"]=""
+                ["host_empty_start"]="on_host_start"
+                ["host_start_wait"]=""
                 ["host_wait_offline"]="on_host_offline"
                 ["host_wait_online"]=""
-                ["host_online_online"]=""
                 ["host_online_offline"]="on_host_offline"
-                ["host_offline_offline"]=""
                 ["host_offline_online"]="on_host_online"
-                ["host_stop_stop"]="on_host_stop"
+                ["host_wait_stop"]="on_host_stop"
+                ["host_online_stop"]="on_host_stop"
+                ["host_offline_stop"]="on_host_stop"
             )
 
             declare -g -A _host_status_transitions=(
-                ["host_start_start"]=""
-                ["host_wait_wait"]=""
+                ["host_empty_start"]="start"
+                ["host_start_wait"]="wait"
                 ["host_wait_offline"]="offline"
                 ["host_wait_online"]="online"
-                ["host_online_online"]=""
                 ["host_online_offline"]="offline"
-                ["host_offline_offline"]=""
                 ["host_offline_online"]="online"
-                ["host_stop_stop"]="stop"
+                ["host_wait_stop"]="stop"
+                ["host_online_stop"]="stop"
+                ["host_offline_stop"]="stop"
             )
+
+            declare -g -A _host_state
+
+            host_state set_current_status "empty"
             ;;
         start_host)
             info
 
-            _host_state["current_status"]="start"
-            _host_state["polled_status"]="start"
+            host_state set_polled_status "start"
 
             host_state transition
 
-            _host_state["current_status"]="wait"
-            _host_state["polled_status"]="wait"
+            host_state set_polled_status "wait"
             ;;
         stop_host)
             info
 
-            _host_state["current_status"]="stop"
-            _host_state["polled_status"]="stop"
+            host_state set_polled_status "stop"
 
             host_state transition
             ;;
@@ -3062,6 +3147,12 @@ function host_state() {
 
             local current_status="${_host_state["current_status"]}"
             local polled_status="${_host_state["polled_status"]}"
+
+            if [[ "${current_status}" == "${polled_status}" ]]
+            then
+                return 0
+            fi
+
             local transition="host_${current_status}_${polled_status}"
 
             local new_event="${_host_event_transitions["${transition}"]}"
@@ -3071,9 +3162,42 @@ function host_state() {
             local new_status="${_host_status_transitions["${transition}"]}"
 
             case "${new_status}" in
-                wait|stop|offline|online)
-                    info "${host_name} status from ${current_status} to ${new_status}"
-                    _host_state["current_status"]="${new_status}"
+                start|wait|offline|online|stop)
+                    ui before_status_changed "${host_name}" "${new_status}" "${current_status}" \
+                        "${_host_state["current_status_timestamp"]}"
+
+                    host_state set_current_status "${new_status}"
+
+                    ui after_status_changed
+                    ;;
+            esac
+            ;;
+        get_host_state_text)
+            if ! sys is_running && [ "${_host_state["current_status"]}" != "stop" ]
+            then
+                echo "is stopping"
+            else
+                echo "${_host_state["state_text"]}"
+            fi
+            ;;
+        get_current_status)
+            echo "${_host_state["current_status"]:-start}"
+            ;;
+        set_current_status)
+            local status="${1}" && shift
+
+            _host_state["current_status_timestamp"]="${EPOCHSECONDS}"
+            _host_state["current_status"]="${status}"
+
+            case "${status}" in
+                empty|start)
+                    _host_state["state_text"]="is starting"
+                    ;;
+                stop)
+                    _host_state["state_text"]="was shutdown"
+                    ;;
+                *)
+                    _host_state["state_text"]="is running"
                     ;;
             esac
             ;;
@@ -3270,69 +3394,48 @@ function peer_state() {
         init)
             info
 
-            declare -g -A _peer_state
-
             declare -g -A _peer_event_transitions=(
-                ["peer_start_start"]="on_peer_start"
-                ["peer_wait_wait"]=""
+                ["peer_empty_start"]="on_peer_start"
+                ["peer_start_wait"]=""
                 ["peer_wait_offline"]="on_peer_offline"
                 ["peer_wait_online"]=""
-                ["peer_online_online"]=""
                 ["peer_online_offline"]="on_peer_offline"
-                ["peer_offline_offline"]=""
                 ["peer_offline_online"]="on_peer_online"
-                ["peer_stop_stop"]="on_peer_stop"
+                ["peer_wait_stop"]="on_peer_stop"
+                ["peer_online_stop"]="on_peer_stop"
+                ["peer_offline_stop"]="on_peer_stop"
             )
 
             declare -g -A _peer_status_transitions=(
-                ["peer_start_start"]=""
-                ["peer_wait_wait"]=""
+                ["peer_empty_start"]="start"
+                ["peer_start_wait"]="wait"
                 ["peer_wait_offline"]="offline"
                 ["peer_wait_online"]="online"
-                ["peer_online_online"]=""
                 ["peer_online_offline"]="offline"
-                ["peer_offline_offline"]=""
                 ["peer_offline_online"]="online"
-                ["peer_stop_stop"]=""
+                ["peer_wait_stop"]="stop"
+                ["peer_online_stop"]="stop"
+                ["peer_offline_stop"]="stop"
             )
 
-            declare -g -A _peer_status_text=(
-                ["start"]="start"
-                ["wait"]="init"
-                ["offline"]="down"
-                ["online"]="up"
-                ["stop"]="stop"
-            )
-
-            declare -g -A _peer_status_screen=(
-                ["start"]="start"
-                ["wait"]="init"
-                ["offline"]="💔"
-                ["online"]="💚"
-                ["stop"]="stop"
-            )
+            declare -g -A _peer_state
             ;;
         start_peer)
             local peer_name="${1}" && shift
             info "${peer_name}"
 
-            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
-            _peer_state["current_status_${peer_name}"]="start"
-            _peer_state["polled_status_${peer_name}"]="start"
+            peer_state set_current_status "${peer_name}" "empty"
+            peer_state set_polled_status "${peer_name}" "start"
 
             peer_state transition "${peer_name}"
 
-            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
-            _peer_state["current_status_${peer_name}"]="wait"
-            _peer_state["polled_status_${peer_name}"]="wait"
+            peer_state set_polled_status "${peer_name}" "wait"
             ;;
         stop_peer)
             local peer_name="${1}" && shift
             info "${peer_name}"
 
-            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
-            _peer_state["current_status_${peer_name}"]="stop"
-            _peer_state["polled_status_${peer_name}"]="stop"
+            peer_state set_polled_status "${peer_name}" "stop"
 
             peer_state transition "${peer_name}"
             ;;
@@ -3341,6 +3444,12 @@ function peer_state() {
 
             local current_status="${_peer_state["current_status_${peer_name}"]}"
             local polled_status="${_peer_state["polled_status_${peer_name}"]}"
+
+            if [[ "${current_status}" == "${polled_status}" ]]
+            then
+                return 0
+            fi
+
             local transition="peer_${current_status}_${polled_status}"
 
             local new_event="${_peer_event_transitions["${transition}"]}"
@@ -3350,27 +3459,26 @@ function peer_state() {
             local new_status="${_peer_status_transitions["${transition}"]}"
 
             case "${new_status}" in
-                wait|stop|offline|online)
+                start|wait|offline|online|stop)
+                    ui before_status_changed "${peer_name}" "${new_status}" "${current_status}" \
+                        "${_peer_state["current_status_timestamp_${peer_name}"]}"
 
-                    local status_time="$((${EPOCHSECONDS} - _peer_state["current_status_timestamp_${peer_name}"]))"
-                    local status_title="${peer_name} is ${_peer_status_text[${new_status}]}"
-                    local status_text="${_peer_status_text[${current_status}]} time was $(format_time "${status_time}")"
+                    peer_state set_current_status "${peer_name}" "${new_status}"
 
-                    info "${status_title}, ${status_text}"
-
-                    _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
-                    _peer_state["current_status_${peer_name}"]="${new_status}"
-
-                    local all_peers_status=""
-
-                    for _peer_name in ${config["peer_name_list"]}
-                    do
-                        all_peers_status+="${_peer_name} ${_peer_status_screen[${_peer_state["current_status_${_peer_name}"]}]} "
-                    done
-
-                    debug "${all_peers_status}"
+                    ui after_status_changed
                     ;;
             esac
+            ;;
+        get_current_status)
+            local peer_name="${1}" && shift
+            echo "${_peer_state["current_status_${peer_name}"]:-start}"
+            ;;
+        set_current_status)
+            local peer_name="${1}" && shift
+            local status="${1}" && shift
+
+            _peer_state["current_status_timestamp_${peer_name}"]="${EPOCHSECONDS}"
+            _peer_state["current_status_${peer_name}"]="${status}"
             ;;
         set_polled_status)
             local peer_name="${1}" && shift
@@ -3682,8 +3790,8 @@ function wirething_main() {
                 wirething up_peer "${_peer_name}"
             done
 
-            host start
             peer start
+            host start
             ;;
         down)
             info
