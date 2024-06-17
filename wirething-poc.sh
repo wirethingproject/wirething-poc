@@ -983,6 +983,9 @@ function env_config() {
 
                 WGQ_PEER_ALLOWED_IPS_VAR_NAME="WGQ_PEER_${peer_name^^}_ALLOWED_IPS"
                 config["peer_wg_quick_allowed_ips_${peer_name}"]="${!WGQ_PEER_ALLOWED_IPS_VAR_NAME:?Variable not set}"
+
+                WGQ_PEER_LOCAL_IPS_VAR_NAME="WGQ_PEER_${peer_name^^}_LOCAL_IPS"
+                config["peer_wg_quick_local_ips_${peer_name}"]="${!WGQ_PEER_LOCAL_IPS_VAR_NAME:-}"
             done
 
             config["peer_name_list"]="${config["peer_name_list"]% }"
@@ -1294,15 +1297,36 @@ AllowedIPs = ${config["peer_wg_quick_allowed_ips_${_peer_name}"]}
 PersistentKeepalive = ${WGQ_PEER_PERSISTENT_KEEPALIVE}
 EOF
 
-        if [ -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" ]
+        local endpoint="" local_port="0" local_ip=""
+
+        if [ -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}_local_port" ]
         then
-            local endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 1 -d " ")
-            if [ "${endpoint}" != "" ]
+            local_port="$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}_local_port" 2>&${WT_LOG_DEBUG})"
+        fi
+
+        if [ "${config["peer_wg_quick_local_ips_${_peer_name}"]}" != "" ]
+        then
+            local_ip="${config["peer_wg_quick_local_ips_${_peer_name}"]}"
+        fi
+
+        if [[ "${local_port}" != "0" && "${local_ip}" != "" ]]
+        then
+            if ping_quick "${local_ip}" >&${null}
             then
-            cat <<EOF
+                endpoint="${local_ip}:${local_port}"
+            fi
+        fi
+
+        if [[ "${endpoint}" == "" && -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" ]]
+        then
+            endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 1 -d " ")
+        fi
+
+        if [ "${endpoint}" != "" ]
+        then
+        cat <<EOF
 Endpoint = ${endpoint}
 EOF
-            fi
         fi
     done
 }
@@ -1732,6 +1756,16 @@ function wireproxy_interface() {
                         touch "${WIREPROXY_RELOAD_FILE}"
                     fi
                     ;;
+                peer_local_port)
+                    local peer_name="${1}" && shift
+                    local local_port="${1}" && shift
+                    info "peer_endpoint ${peer_name} ${local_port}"
+
+                    if ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
+                    then
+                        touch "${WIREPROXY_RELOAD_FILE}"
+                    fi
+                    ;;
             esac
             ;;
         get)
@@ -1755,10 +1789,23 @@ function wireproxy_interface() {
                     ;;
                 host_status)
                     {
+                        local all_local="true"
+
                         for _peer_name in ${config["peer_name_list"]}
                         do
-                            echo "${wireproxy_last_keepalive["${_peer_name}"]}"
+                            if ! grep -q "Endpoint = ${config["peer_wg_quick_local_ips_${_peer_name}"]}" < "${WGQ_CONFIG_FILE}"
+                            then
+                                echo "${wireproxy_last_keepalive["${_peer_name}"]}"
+                                all_local="false"
+                            else
+                                echo "0"
+                            fi
                         done
+
+                        if [ "${all_local}" == "true" ]
+                        then
+                            echo "${EPOCHSECONDS}"
+                        fi
                     } | sort -n | tail -n 1 | {
                         read last_keepalive
 
@@ -2600,6 +2647,15 @@ function wirething() {
 
                     interface set peer_endpoint "${peer_name}" "${endpoint}"
                     ;;
+                peer_local_port)
+                    local peer_name="${1}" && shift
+                    local local_port="${1}" && shift
+
+                    info "peer_local_port ${peer_name} ${local_port}"
+                    echo "${local_port}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}_local_port"
+
+                    interface set peer_local_port "${peer_name}" "${local_port}"
+                    ;;
             esac
             ;;
         get)
@@ -2628,6 +2684,13 @@ function wirething() {
                     local timestamp="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 2 -d " ")"
                     debug "peer_endpoint_update_time ${peer_name} ${timestamp:-''}"
                     echo "${timestamp:-0}"
+                    ;;
+                peer_local_port)
+                    local peer_name="${1}" && shift
+
+                    local local_port="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}_local_port" 2>&${WT_LOG_DEBUG})"
+                    debug "peer_local_port ${peer_name} ${local_port:-0}"
+                    echo "${local_port:-0}"
                     ;;
             esac
             ;;
@@ -2667,35 +2730,33 @@ function wirething() {
             debug
             local peer_name="${1}" && shift
 
-            {
-                wirething get host_endpoint
-            } | {
-                read host_endpoint
-                echo "${host_endpoint}" | hexdump -C | raw_trace
+            read host_endpoint < <(wirething get host_endpoint)
+            read host_port < <(wirething get host_port)
 
-                if [ "${host_endpoint}" != "" ]
-                then
-                    info "${host_endpoint}"
+            echo "${host_endpoint} ${host_port}" | hexdump -C | raw_trace
 
+            if [ "${host_endpoint}" != "" ]
+            then
+                info "${host_endpoint} ${host_port}"
+
+                {
+                    topic publish "${peer_name}"
+                } | {
+                    read topic
                     {
-                        topic publish "${peer_name}"
+                        encryption encrypt "${host_endpoint} ${host_port}" "${peer_name}"
                     } | {
-                        read topic
-                        {
-                            encryption encrypt "${host_endpoint}" "${peer_name}"
-                        } | {
-                            read encrypted_host_endpoint
+                        read encrypted_host_endpoint
 
-                            if [ "${encrypted_host_endpoint}" != "" ]
-                            then
-                                pubsub publish "${topic}" "${encrypted_host_endpoint}"
-                            else
-                                error "empty encrypted_host_endpoint"
-                            fi
-                        }
+                        if [ "${encrypted_host_endpoint}" != "" ]
+                        then
+                            pubsub publish "${topic}" "${encrypted_host_endpoint}"
+                        else
+                            error "empty encrypted_host_endpoint"
+                        fi
                     }
-                fi
-            }
+                }
+            fi
             ;;
         poll_encrypted_host_endpoint)
             debug
@@ -2767,23 +2828,25 @@ function wirething() {
                 local encrypted_message="$(echo "${line}" | jq -r ".message")"
 
                 local peer_name="${topic_index[${topic}]}"
-                local new_peer_endpoint="$(encryption decrypt "${encrypted_message}")"
+                local new_peer_endpoint new_local_port
+                read new_peer_endpoint new_local_port <<<"$(encryption decrypt "${encrypted_message}")"
 
                 if [ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} ]
                 then
-                    debug "${peer_name} new published peer_endpoint=${new_peer_endpoint} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
+                    debug "${peer_name} new published peer_endpoint=${new_peer_endpoint} local_port=${new_local_port} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
                 else
-                    debug "${peer_name} old published peer_endpoint=${new_peer_endpoint} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
+                    debug "${peer_name} old published peer_endpoint=${new_peer_endpoint} local_port=${new_local_port} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
                 fi
 
                 if [[ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} &&
+                     "${new_peer_endpoint}" != "" &&
                      "${new_peer_endpoint}" != "${peer_endpoint_list["${peer_name}"]}" ]]
                 then
                     peer_endpoint_list["${peer_name}"]="${new_peer_endpoint}"
                     peer_endpoint_list["${peer_name}_update_time"]="${event_time}"
 
                     info "new peer endpoint ${peer_name} ${new_peer_endpoint}"
-                    event fire "${peer_name} new_peer_endpoint ${new_peer_endpoint} ${event_time}"
+                    event fire "${peer_name} new_peer_endpoint ${new_peer_endpoint} ${new_local_port:-0} ${event_time}"
                 fi
             else
                 debug "event=${event}"
@@ -2796,8 +2859,14 @@ function wirething() {
             case "${event}" in
                 new_peer_endpoint)
                     local endpoint="${1}" && shift
+                    local local_port="${1}" && shift
                     local event_time="${1}" && shift
                     wirething set peer_endpoint "${peer_name}" "${endpoint}" "${event_time}"
+
+                    if [ "${local_port}" != "0" ]
+                    then
+                        wirething set peer_local_port "${peer_name}" "${local_port}"
+                    fi
                     ;;
             esac
             ;;
@@ -2858,16 +2927,13 @@ function wirething() {
 
                             echo "${published_host_endpoint}" | hexdump -C | raw_trace
 
-                            {
-                                wirething get host_endpoint
-                            } | {
-                                read host_endpoint
+                            read host_endpoint < <(wirething get host_endpoint)
+                            read host_port < <(wirething get host_port)
 
-                                if [ "${published_host_endpoint}" != "${host_endpoint}" ]
-                                then
-                                    wirething publish_host_endpoint "${peer_name}"
-                                fi
-                            }
+                            if [ "${published_host_endpoint}" != "${host_endpoint} ${host_port}" ]
+                            then
+                                wirething publish_host_endpoint "${peer_name}"
+                            fi
                         }
                 esac
             }
