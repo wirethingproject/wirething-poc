@@ -1511,7 +1511,7 @@ function wireproxy_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg cat cut find grep rm sort tail touch"
+            echo "wg cat cut find grep rm sort tail touch sleep"
             ;;
         init)
             info
@@ -1692,15 +1692,20 @@ function wireproxy_interface() {
             if ! grep "peer(" <<<"${line}" >&${null}
             then
                 case "${line}" in
-                    "DEBUG"*"Interface state was Down, requested Up, now Up")
+                    *"Interface state was Down, requested Up, now Up")
+                        info "interface is ready"
                         touch "${WIREPROXY_READY_FILE}"
-                        info "ready"
                         ;;
-                    "ERROR"*"address already in use")
-                        wirething set host_port 1024
+                    "ERROR"*"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
+                        event fire punch
                         ;;
-                    "panic: listen tcp ${WIREPROXY_HEALTH_BIND}: bind: address already in use")
-                        # TODO disable health bind if address already in use
+                    *"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
+                        info "interface was failed"
+                        sleep 10
+                        ;;
+                    *"address already in use")
+                        info "interface was failed"
+                        touch "${WIREPROXY_READY_FILE}"
                         ;;
                 esac
             else
@@ -1715,23 +1720,33 @@ function wireproxy_interface() {
 
                 case "${line}" in
                     *"Receiving keepalive packet")
-                        event fire "${peer_name} keepalive ${EPOCHSECONDS}"
+                        event fire keepalive "${peer_name} ${EPOCHSECONDS}"
                         ;;
                     *"Received handshake response")
-                        event fire "${peer_name} keepalive ${EPOCHSECONDS}"
+                        event fire keepalive "${peer_name} ${EPOCHSECONDS}"
                         ;;
                 esac
             fi
             ;;
         event)
-            local peer_name="${1}" && shift
             local event="${1}" && shift
 
             case "${event}" in
                 keepalive)
+                    local peer_name="${1}" && shift
                     local keepalive="${1}" && shift
                     wireproxy_last_keepalive["${peer_name}"]="${keepalive}"
                     ;;
+                punch)
+                    if wirething punch_host_endpoint
+                    then
+                        info "punch succeeded"
+                        wirething broadcast_host_endpoint
+                    else
+                        info "punch failed"
+                    fi
+
+                    touch "${WIREPROXY_READY_FILE}"
             esac
             ;;
         set)
