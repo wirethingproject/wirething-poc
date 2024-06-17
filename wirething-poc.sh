@@ -1641,10 +1641,20 @@ function wireproxy_interface() {
                 return 1
             fi
 
-            echo "${line}" | { grep "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
-                | raw_log wireproxy trace 27
+            local log_pattern="Received\|Receiving\|Sending\|Health metric request\|Handshake did not complete after 5 seconds"
 
-            echo "${line}" | { grep -v "Received\|Receiving\|Sending\|Handshake did not complete after 5 seconds" || true; } \
+            echo "${line}" | { grep "${log_pattern}" || true; } \
+                | {
+                case "${line}" in
+                    "DEBUG: "*|"ERROR: "*)
+                        raw_log wireproxy trace 27
+                        ;;
+                    *)
+                        raw_log wireproxy trace 20
+                esac
+            }
+
+            echo "${line}" | { grep -v "${log_pattern}" || true; } \
                 | {
                 case "${line}" in
                     "DEBUG: "*|"ERROR: "*)
@@ -1655,7 +1665,7 @@ function wireproxy_interface() {
                 esac
             }
 
-            if ! grep "peer(" <<<"${line}" > /dev/null
+            if ! grep "peer(" <<<"${line}" >&${null}
             then
                 case "${line}" in
                     "DEBUG"*"Interface state was Down, requested Up, now Up")
