@@ -2211,16 +2211,22 @@ function ntfy_pubsub() {
                     ;;
                 "curl"*"timed out"*)
                     debug "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event": "timeout"}'
+                    return 1
+                    ;;
+                "curl: (56) Recv failure: Software caused connection abort")
+                    info "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event": "connection_lost"}'
                     return 1
                     ;;
                 "curl"*)
                     error "$(short "${topic}") response: ${subscribe_response}"
-                    sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
+                    echo '{"event": "error"}'
                     return 1
                     ;;
                 "{"*"error"*)
                     error "$(short "${topic}") response: ${subscribe_response}"
-                    sleep "${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR}"
+                    echo '{"event": "error"}'
                     return 1
                     ;;
                 *)
@@ -2852,43 +2858,56 @@ function wirething() {
         subscribe_encrypted_peer_endpoint_process)
             local event="$(echo "${line}" | jq -r ".event")"
 
-            if [ "${event}" == "message" ]
-            then
-                local topic="$(echo "${line}" | jq -r ".topic")"
-                local event_time="$(echo "${line}" | jq -r ".time")"
-                local encrypted_message="$(echo "${line}" | jq -r ".message")"
+            case "${event}" in
+                error|timeout)
+                    debug "event=${event}"
+                    sleep "${WT_PAUSE_AFTER_ERROR}"
+                    ;;
+                connection_lost)
+                    debug "event=${event}"
+                    sleep "${WT_PAUSE_AFTER_CONNECTION_LOST}"
+                    event fire punch
+                    ;;
+                keepalive)
+                    debug "event=${event}"
+                    ;;
+                message)
+                    local topic="$(echo "${line}" | jq -r ".topic")"
+                    local event_time="$(echo "${line}" | jq -r ".time")"
+                    local encrypted_message="$(echo "${line}" | jq -r ".message")"
 
-                local peer_name="${topic_index[${topic}]}"
-                local new_peer_endpoint new_local_port
-                read new_peer_endpoint new_local_port <<<"$(encryption decrypt "${encrypted_message}")"
+                    local peer_name="${topic_index[${topic}]}"
+                    local new_peer_endpoint new_local_port
+                    read new_peer_endpoint new_local_port <<<"$(encryption decrypt "${encrypted_message}")"
 
-                if [ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} ]
-                then
-                    debug "${peer_name} new published peer_endpoint=${new_peer_endpoint} local_port=${new_local_port} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
-                else
-                    debug "${peer_name} old published peer_endpoint=${new_peer_endpoint} local_port=${new_local_port} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
-                fi
+                    if [ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} ]
+                    then
+                        debug "${peer_name} new published peer_endpoint=${new_peer_endpoint} local_port=${new_local_port} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
+                    else
+                        debug "${peer_name} old published peer_endpoint=${new_peer_endpoint} local_port=${new_local_port} ${event_time} current=${peer_endpoint_list["${peer_name}"]} ${peer_endpoint_list["${peer_name}_update_time"]}"
+                    fi
 
-                if [[ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} &&
-                     "${new_peer_endpoint}" != "" &&
-                     "${new_peer_endpoint}" != "${peer_endpoint_list["${peer_name}"]}" ]]
-                then
-                    peer_endpoint_list["${peer_name}"]="${new_peer_endpoint}"
-                    peer_endpoint_list["${peer_name}_update_time"]="${event_time}"
+                    if [[ ${event_time} -gt ${peer_endpoint_list["${peer_name}_update_time"]} &&
+                         "${new_peer_endpoint}" != "" &&
+                         "${new_peer_endpoint}" != "${peer_endpoint_list["${peer_name}"]}" ]]
+                    then
+                        peer_endpoint_list["${peer_name}"]="${new_peer_endpoint}"
+                        peer_endpoint_list["${peer_name}_update_time"]="${event_time}"
 
-                    info "new peer endpoint ${peer_name} ${new_peer_endpoint}"
-                    event fire "${peer_name} new_peer_endpoint ${new_peer_endpoint} ${new_local_port:-0} ${event_time}"
-                fi
-            else
-                debug "event=${event}"
-            fi
+                        info "new peer endpoint ${peer_name} ${new_peer_endpoint}"
+                        event fire new_peer_endpoint "${peer_name} ${new_peer_endpoint} ${new_local_port:-0} ${event_time}"
+                    fi
+                    ;;
+                *)
+                    debug "event=${event}"
+            esac
             ;;
         event)
-            local peer_name="${1}" && shift
             local event="${1}" && shift
 
             case "${event}" in
                 new_peer_endpoint)
+                    local peer_name="${1}" && shift
                     local endpoint="${1}" && shift
                     local local_port="${1}" && shift
                     local event_time="${1}" && shift
@@ -2899,6 +2918,14 @@ function wirething() {
                         wirething set peer_local_port "${peer_name}" "${local_port}"
                     fi
                     ;;
+                punch)
+                    if wirething punch_host_endpoint
+                    then
+                        info "punch succeeded"
+                        wirething broadcast_host_endpoint
+                    else
+                        info "punch failed"
+                    fi
             esac
             ;;
         poll_encrypted_peer_endpoint)
@@ -3770,6 +3797,7 @@ function wirething_main() {
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE_PATH}/peer_last_keepalive"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
+            WT_PAUSE_AFTER_CONNECTION_LOST="${WT_PAUSE_AFTER_CONNECTION_LOST:-10}" # 10 seconds
 
             info "WT_PID=${WT_PID}"
 
