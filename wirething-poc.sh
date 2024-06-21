@@ -32,20 +32,26 @@ shopt -s expand_aliases  # Aliases are expanded on non interactive shell
 shopt -s inherit_errexit # Command substitution inherits the value of the errexit option
 shopt -s execfail        # Don't exit if exec cannot execute the file
 
+# io
+
+exec {null}<>/dev/null
+exec {err}>&2
+
+if [[ "${JOURNAL_STREAM:-}" != "" || "${SVDIR:-}" != "" ]]
+then
+    LOG_TIME="false"
+else
+    LOG_TIME="true"
+fi
+
+if [ "${LOG_TIME}" == "true" ]
+then
+    alias sys_log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
+else
+    alias sys_log='echo'
+fi
+
 # base
-
-function io() {
-    local action="${1}" && shift
-
-    case "${action}" in
-        init)
-            exec {null}<>/dev/null
-            exec {err}>&2
-            ;;
-    esac
-}
-
-io init
 
 function os() {
     local die_action="${action:-}"
@@ -187,8 +193,6 @@ function os() {
     esac
 }
 
-os init
-
 function sys() {
     local sig_action="${action:-}"
     local action="${1}" && shift
@@ -198,19 +202,7 @@ function sys() {
             echo "id"
             ;;
         init)
-            if [[ "${JOURNAL_STREAM:-}" != "" || "${SVDIR:-}" != "" ]]
-            then
-                SYS_LOG_TIME="false"
-            else
-                SYS_LOG_TIME="true"
-            fi
-
-            if [ "${SYS_LOG_TIME}" == "true" ]
-            then
-                alias sys_log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
-            else
-                alias sys_log='echo'
-            fi
+            :
             ;;
         is_running)
             if [ "${_sys_running}" == "true" ]
@@ -240,12 +232,12 @@ function sys() {
         start)
             if [[ ! -v _sys_error_path ]]
             then
-                die "'sys set_error_path' was not called"
+                os die "'sys set_error_path' was not called"
             fi
 
             if [[ ! -v _sys_on_exit ]]
             then
-                die "'sys set_on_exit' was not called"
+                os die "'sys set_on_exit' was not called"
             fi
 
             _sys_running="true"
@@ -330,8 +322,6 @@ function sys() {
     esac
 }
 
-sys init
-
 function log() {
     local log_action="${1}" && shift
 
@@ -364,7 +354,7 @@ function log() {
                     WT_LOG_INFO="${null}"
                     ;;
                 *)
-                    die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
+                    os die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
             esac
 
             alias short="log short"
@@ -467,6 +457,8 @@ function log() {
     esac
 }
 
+os init
+sys init
 log init
 
 # utils
