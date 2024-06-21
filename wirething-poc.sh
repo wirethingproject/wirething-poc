@@ -1696,6 +1696,7 @@ function wireproxy_interface() {
                     *"Interface state was Down, requested Up, now Up")
                         info "interface is ready"
                         touch "${WIREPROXY_READY_FILE}"
+                        event fire ready
                         ;;
                     "ERROR"*"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
                         event fire punch
@@ -1748,6 +1749,9 @@ function wireproxy_interface() {
                     fi
 
                     touch "${WIREPROXY_READY_FILE}"
+                    ;;
+                ready)
+                    ui after_status_changed
             esac
             ;;
         set)
