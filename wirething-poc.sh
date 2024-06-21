@@ -1973,7 +1973,8 @@ function stun_punch() {
             ;;
         init)
             info
-            STUN_HOSTNAME="${STUN_HOSTNAME:-stunserver.stunprotocol.org}" # Stun service hosting the Stuntman
+
+            STUN_HOSTNAME="${STUN_HOSTNAME:-stunserver2024.stunprotocol.org}" # Stun service hosting the Stuntman
             STUN_PORT="${STUN_PORT:-3478}"
 
             STUN_PROTOCOL="udp"
