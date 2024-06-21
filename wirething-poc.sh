@@ -95,13 +95,24 @@ function os() {
                     alias ping_quick="ping -c 1 -W 1"
                     alias base64='os linux base64'
 
-                    if [ -v TERMUX_VERSION ] &&
-                        type -a termux-notification >&${null} 2>&${null}
-                    then
-                        alias os_ui="os termux ui"
-                    else
-                        alias os_ui=":"
-                    fi
+                    case "${OSTYPE}" in
+                        linux-android)
+                            ANDROID_VERSION="$(getprop ro.build.version.release)"
+                            ANDROID_SDK="$(getprop ro.build.version.sdk)"
+                            ANDROID_MIN_SDK="$(getprop ro.build.version.min_supported_target_sdk)"
+
+                            if [ -v TERMUX_VERSION ] &&
+                                type -a termux-notification >&${null} 2>&${null}
+                            then
+                                alias os_ui="os termux ui"
+                            else
+                                alias os_ui=":"
+                            fi
+                            ;;
+                        *)
+                            alias os_ui=":"
+                            ;;
+                    esac
                     ;;
                 *)
                     os die "OS *${OSTYPE}* not supported"
