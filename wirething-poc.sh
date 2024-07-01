@@ -3051,6 +3051,8 @@ function ui() {
                 ["online"]="💚"
                 ["offline-local"]="🍎"
                 ["online-local"]="🍏"
+                ["offline-host"]="⛈️"
+                ["online-host"]="🌈"
                 ["stop"]="👋🏿"
             )
 
@@ -3073,9 +3075,17 @@ function ui() {
             fi
             ;;
         after_status_changed)
+            local host_status="$(host_state get_current_status)"
+
+            case "${host_status}" in
+                online|offline)
+                    host_status+="-host"
+                    ;;
+            esac
+
             local group="wirething-host-status-${config["host_name"]}"
             local title="Wirething $(host_state get_host_state_text)"
-            local text="${config["host_name"]} ${_ui_status_screen[$(host_state get_current_status)]}  |  "
+            local text="${config["host_name"]} ${_ui_status_screen["${host_status}"]}  |  "
 
             local peer_status
 
@@ -3087,7 +3097,7 @@ function ui() {
                     online|offline)
                         if interface get is_peer_local "${_peer_name}"
                         then
-                            peer_status="${peer_status}-local"
+                            peer_status+="-local"
                         fi
                         ;;
                 esac
