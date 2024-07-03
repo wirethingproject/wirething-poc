@@ -3106,19 +3106,35 @@ function ui() {
         before_status_changed)
             local device_name="${1}" && shift
             local new_status="${1}" && shift
-            local current_status="${1}" && shift
-            local current_status_timestamp="${1}" && shift
+            local previous_status="${1}" && shift
+            local previous_status_timestamp="${1}" && shift
 
-            if [ "${current_status}" != "empty" ]
+            if [ "${previous_status}" != "empty" ]
             then
-                local status_time="$((${EPOCHSECONDS} - ${current_status_timestamp}))"
+                local previous_status_time="$((${EPOCHSECONDS} - ${previous_status_timestamp}))"
                 local title="${device_name} is ${_ui_status_text[${new_status}]}"
 
-                local formated_status_time
-                format_time "${status_time}" var_name "formated_status_time"
-                local text="${_ui_status_text[${current_status}]/ing/} time was ${formated_status_time}"
+                local formated_previous_status_time
+                format_time "${previous_status_time}" var_name "formated_previous_status_time"
+                local text="${_ui_status_text[${previous_status}]/ing/} time was ${formated_previous_status_time}"
 
                 info "${title}, ${text}"
+
+                case "${previous_status}" in
+                    offline)
+                        if [[ "${previous_status_time}" -lt "$((60 * 20))" ]] # 20 minutes
+                        then
+                            return 0
+                        fi
+                        ;;
+                    online)
+                        if [[ "${previous_status_time}" -lt "$((60 * 5))" ]] # 5 minutes
+                        then
+                            return 0
+                        fi
+                        ;;
+                esac
+
                 os_ui log "${title}" "${text}"
             fi
             ;;
