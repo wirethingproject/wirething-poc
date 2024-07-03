@@ -357,6 +357,13 @@ function log() {
                     os die "invalid WT_LOG_LEVEL *${WT_LOG_LEVEL}*, options: trace, debug, info, error"
             esac
 
+            declare -g -A _fd_from_level=(
+                ["trace"]="${WT_LOG_TRACE}"
+                ["debug"]="${WT_LOG_DEBUG}"
+                ["info"]="${WT_LOG_INFO}"
+                ["error"]="${WT_LOG_ERROR}"
+            )
+
             alias short="log short"
             alias short4="log short4"
             alias format_time="log format_time"
@@ -368,6 +375,7 @@ function log() {
             alias raw_trace="log raw_trace"
             alias hex_raw_trace="log hex_raw_trace"
             alias raw_log="log raw_log"
+            alias raw_log_param="log raw_log_param"
             ;;
         short4)
             echo "${1::4}"
@@ -376,13 +384,16 @@ function log() {
             echo "${1::9}"
             ;;
         format_time)
-            local seconds="${1}"
+            local seconds="${1}" && shift
+            shift # var_name
+            local var_name="${1}"
+
             local hours
 
             ((hours = seconds / 3600)) || true
             ((seconds %= 3600)) || true
 
-            printf "%.2u:%(%M:%S)T" "${hours}" "${seconds}"
+            printf -v "${var_name}" "%.2u:%(%M:%S)T" "${hours}" "${seconds}"
             ;;
         debug)
             sys_log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
@@ -413,25 +424,23 @@ function log() {
 
             case "${_level}" in
                 trace*|TRACE*)
-                    level_fd="${WT_LOG_TRACE}"
                     level_name="TRACE"
                     ;;
                 debug*|DEBUG*)
-                    level_fd="${WT_LOG_DEBUG}"
                     level_name="DEBUG"
                     ;;
                 info*|INFO*)
-                    level_fd="${WT_LOG_INFO}"
-                    level_name="INFO "
+                    level_name="INFO"
                     ;;
                 error*|ERROR*)
-                    level_fd="${WT_LOG_ERROR}"
                     level_name="ERROR"
                     ;;
                 *)
-                    level_fd="${WT_LOG_ERROR}"
                     level_name="ERROR"
             esac
+
+            level_fd="${_fd_from_level[${level_name,,}]}"
+            level_name="${level_name/INFO/INFO }"
             ;;
         raw_log)
             local app="${1}" && shift
@@ -453,6 +462,16 @@ function log() {
                 log raw_log_set_level
                 cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(sys_log "${level_name} [${app}] ")," >&${level_fd} || true
             fi
+            ;;
+        raw_log_param)
+            local line="${1}" && shift
+            local app="${1}" && shift
+            local level="${1}" && shift
+            local start_index="${1:-0}" && shift
+
+            local level_name="${level/info/info }"
+
+            sys_log "${level_name^^} [${app}] ${line:${start_index}}" >&${_fd_from_level[${level}]} || true
             ;;
     esac
 }
@@ -1189,6 +1208,8 @@ function wg_interface() {
                     ;;
                 peer_status)
                     local peer_name="${1}" && shift
+                    shift # var_name
+                    local var_name="${1}" && shift
 
                     local address="$(wg_interface get peer_address "${peer_name}")"
 
@@ -1200,28 +1221,26 @@ function wg_interface() {
                     fi
 
                     debug "peer_status ${peer_name} ${result:-''}"
-                    echo "${result}"
+
+                    read "${var_name}" <<<"${result}"
                     ;;
                 host_status)
-                    local result
+                    shift # var_name
+                    local var_name="${1}" && shift
 
-                    {
-                        wg show "${WG_INTERFACE}" allowed-ips
-                    } | cut -f 2 | sed "s,/32,," | {
-                        result="offline"
+                    local result="offline"
 
-                        while read address
-                        do
-                            if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
-                            then
-                                result="online"
-                            fi
+                    while read address
+                    do
+                        if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
+                        then
+                            result="online"
+                        fi
+                    done < <(wg show "${WG_INTERFACE}" allowed-ips | cut -f 2 | sed "s,/32,,")
 
-                        done
+                    debug "host_status ${result}"
 
-                        debug "host_status ${result}"
-                        echo "${result}"
-                    }
+                    read "${var_name}" <<<"${result}"
                     ;;
             esac
             ;;
@@ -1658,29 +1677,44 @@ function wireproxy_interface() {
                 return 1
             fi
 
-            local log_pattern="Received\|Receiving\|Sending\|Health metric request\|Handshake did not complete after 5 seconds"
+            local log_level="info"
 
-            echo "${line}" | { grep "${log_pattern}" || true; } \
-                | {
-                case "${line}" in
-                    "DEBUG: "*|"ERROR: "*)
-                        raw_log wireproxy trace 27
-                        ;;
-                    *)
-                        raw_log wireproxy trace 20
-                esac
-            }
+            case "${line}" in
+                *"Received"*)
+                    log_level="trace"
+                    ;;
+                *"Receiving"*)
+                    log_level="trace"
+                    ;;
+                *"Sending"*)
+                    log_level="trace"
+                    ;;
+                *"Health metric request"*)
+                    log_level="trace"
+                    ;;
+                *"Handshake did not complete after 5 seconds"*)
+                    log_level="trace"
+                    ;;
+                "DEBUG: "*)
+                    log_level="debug"
+                    ;;
+                "ERROR: "*)
+                    log_level="error"
+                    ;;
+            esac
 
-            echo "${line}" | { grep -v "${log_pattern}" || true; } \
-                | {
-                case "${line}" in
-                    "DEBUG: "*|"ERROR: "*)
-                        raw_log wireproxy from_line 27
-                        ;;
-                    *)
-                        raw_log wireproxy from_line 20
-                esac
-            }
+            local log_index=20
+
+            case "${line}" in
+                "DEBUG: "*)
+                    log_index=27
+                    ;;
+                "ERROR: "*)
+                    log_index=27
+                    ;;
+            esac
+
+            raw_log_param "${line}" wireproxy "${log_level}" "${log_index}"
 
             if ! grep "peer(" <<<"${line}" >&${null}
             then
@@ -1795,6 +1829,8 @@ function wireproxy_interface() {
                     ;;
                 peer_status)
                     local peer_name="${1}" && shift
+                    shift # var_name
+                    local var_name="${1}" && shift
 
                     local keepalive_delta="$((${EPOCHSECONDS} - ${wireproxy_last_keepalive["${peer_name}"]}))"
 
@@ -1807,43 +1843,52 @@ function wireproxy_interface() {
 
                     debug "peer_status ${result} last_keepalive=${wireproxy_last_keepalive["${peer_name}"]} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
 
-                    echo "${result}"
+                    read "${var_name}" <<<"${result}"
                     ;;
                 host_status)
-                    {
-                        local all_local="true"
+                    shift # var_name
+                    local var_name="${1}" && shift
 
-                        for _peer_name in ${config["peer_name_list"]}
-                        do
-                            if wireproxy_interface get is_peer_local "${_peer_name}"
+                    local all_local="true"
+                    local last_keepalive=0
+                    local last_local_keepalive=0
+
+                    for _peer_name in ${config["peer_name_list"]}
+                    do
+                        if wireproxy_interface get is_peer_local "${_peer_name}"
+                        then
+                            if [[ "${wireproxy_last_keepalive["${_peer_name}"]}" -gt "${last_local_keepalive}" ]]
                             then
-                                echo "0"
-                            else
-                                echo "${wireproxy_last_keepalive["${_peer_name}"]}"
-                                all_local="false"
+                                last_local_keepalive="${wireproxy_last_keepalive["${_peer_name}"]}"
                             fi
-                        done
+                        else
+                            all_local="false"
 
-                        if [ "${all_local}" == "true" ]
-                        then
-                            echo "${EPOCHSECONDS}"
+                            if [[ "${wireproxy_last_keepalive["${_peer_name}"]}" -gt "${last_keepalive}" ]]
+                            then
+                                last_keepalive="${wireproxy_last_keepalive["${_peer_name}"]}"
+                            fi
                         fi
-                    } | sort -n | tail -n 1 | {
-                        read last_keepalive
+                    done
 
-                        local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
+                    if [ "${all_local}" == "true" ]
+                    then
+                        last_keepalive="${last_local_keepalive}"
+                    fi
 
-                        debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
-                        local result="offline"
+                    local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
 
-                        if [[ ${keepalive_delta} -lt ${WIREPROXY_HOST_STATUS_TIMEOUT} ]]
-                        then
-                            result="online"
-                        fi
+                    debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
+                    local result="offline"
 
-                        debug "host_status ${result}"
-                        echo "${result}"
-                    }
+                    if [[ ${keepalive_delta} -lt ${WIREPROXY_HOST_STATUS_TIMEOUT} ]]
+                    then
+                        result="online"
+                    fi
+
+                    debug "host_status ${result}"
+
+                    read "${var_name}" <<<"${result}"
                     ;;
             esac
             ;;
@@ -3068,7 +3113,10 @@ function ui() {
             then
                 local status_time="$((${EPOCHSECONDS} - ${current_status_timestamp}))"
                 local title="${device_name} is ${_ui_status_text[${new_status}]}"
-                local text="${_ui_status_text[${current_status}]/ing/} time was $(format_time "${status_time}")"
+
+                local formated_status_time
+                format_time "${status_time}" var_name "formated_status_time"
+                local text="${_ui_status_text[${current_status}]/ing/} time was ${formated_status_time}"
 
                 info "${title}, ${text}"
                 os_ui log "${title}" "${text}"
@@ -3366,7 +3414,9 @@ function host() {
         poll_status)
             host_context set
 
-            local status="$(interface get host_status)"
+            local status
+
+            interface get host_status var_name "status"
 
             debug "${status}"
 
@@ -3643,7 +3693,9 @@ function peer() {
 
             peer_context set "${peer_name}"
 
-            local status="$(interface get peer_status "${peer_name}")"
+            local status
+
+            interface get peer_status "${peer_name}" var_name "status"
 
             debug "${peer_name} ${status}"
 
