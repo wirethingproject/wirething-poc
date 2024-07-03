@@ -1061,7 +1061,7 @@ function event() {
 
             local event event_fd="${EVENT[0]}"
 
-            while read -t 0 -u ${event_fd}
+            while read -t 0 -u "${event_fd}"
             do
                 if read -u "${event_fd}" event
                 then
