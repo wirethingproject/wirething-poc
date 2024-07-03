@@ -179,7 +179,7 @@ function os() {
 
                     case "${type}" in
                         log)
-                            :
+                            osascript -e "display notification \"${text}\" with title \"${title}\""
                             ;;
                         status)
                             local group="${1}" && shift
