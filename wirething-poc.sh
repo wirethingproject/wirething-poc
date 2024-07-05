@@ -3133,6 +3133,12 @@ function ui() {
                             return 0
                         fi
                         ;;
+                    *)
+                        if [[ "${previous_status_time}" -lt "$((60 * 1))" ]] # 1 minute
+                        then
+                            return 0
+                        fi
+                        ;;
                 esac
 
                 os_ui log "${title}" "${text}"
