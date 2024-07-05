@@ -2575,7 +2575,7 @@ function wirething() {
 
     case "${action}" in
         deps)
-            echo "mkdir cat cut hexdump jq"
+            echo "mkdir cat cut hexdump jq sleep"
             ;;
         init)
             info
@@ -3428,7 +3428,7 @@ function host() {
 
     case "${action}" in
         deps)
-            echo "sleep"
+            echo ""
             ;;
         init)
             info
@@ -3697,7 +3697,7 @@ function peer() {
 
     case "${action}" in
         deps)
-            echo "sleep"
+            echo ""
             ;;
         init)
             info
