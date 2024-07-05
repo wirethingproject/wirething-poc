@@ -202,7 +202,22 @@ function sys() {
             echo "id"
             ;;
         init)
-            :
+            sys start_sleep
+            ;;
+        start_sleep)
+            exec {sleep_input}< <(echo "${BASHPID}" && kill -STOP "${BASHPID}")
+            read -u "${sleep_input}" sleep_input_pid
+            ;;
+        stop_sleep)
+            kill -CONT "${sleep_input_pid}" || true
+            ;;
+        sleep)
+            if { read -t "${1}" -u "${sleep_input}" || test "${?}" -le 128; }
+            then
+                return 1
+            else
+                return 0
+            fi
             ;;
         is_running)
             if [ "${_sys_running}" == "true" ]
@@ -297,6 +312,7 @@ function sys() {
             case "${signal}" in
                 EXIT)
                     trap "" ${signal}
+                    sys stop_sleep
                     ${_sys_on_exit}
                     ;;
             esac
@@ -3942,7 +3958,7 @@ function wirething_main() {
 
             while sys is_running
             do
-                if ! sleep 5
+                if ! sys sleep 5
                 then
                     break
                 fi
