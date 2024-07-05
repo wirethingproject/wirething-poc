@@ -156,13 +156,13 @@ function os() {
 
                     case "${type}" in
                         log)
-                            termux-notification -t "${title}" -c "${text}"
+                            termux-notification -t "${title}" -c "${text}" &
                             ;;
                         status)
                             local group="${1}" && shift
 
                             termux-notification --group "${group}" -t "${title}" -c "${text}" \
-                                 --id "${group}" --ongoing --alert-once
+                                 --id "${group}" --ongoing --alert-once &
                             ;;
                     esac
                     ;;
@@ -179,12 +179,12 @@ function os() {
 
                     case "${type}" in
                         log)
-                            osascript -e "display notification \"${text}\" with title \"${title}\""
+                            osascript -e "display notification \"${text}\" with title \"${title}\"" &
                             ;;
                         status)
                             local group="${1}" && shift
 
-                            osascript -e "display notification \"${text}\" with title \"${title}\""
+                            osascript -e "display notification \"${text}\" with title \"${title}\"" &
                             ;;
                     esac
                     ;;
