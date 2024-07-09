@@ -1208,6 +1208,11 @@ function wg_interface() {
         get)
             name="${1}" && shift
             case "${name}" in
+                is_peer_local)
+                    local peer_name="${1}" && shift
+
+                    return 1
+                    ;;
                 peer_address)
                     local peer_name="${1}" && shift
 
@@ -1342,6 +1347,9 @@ EOF
             if ping_quick "${local_ip}" >&${null}
             then
                 endpoint="${local_ip}:${local_port}"
+                wg_quick_interface set location "${_peer_name}" "local"
+            else
+                wg_quick_interface set location "${_peer_name}" "remote"
             fi
         fi
 
@@ -1396,6 +1404,8 @@ function wg_quick_interface() {
             WGQ_CONFIG_FILE="${WT_EPHEMERAL_PATH}/${WGQ_INTERFACE}.conf"
 
             info "WGQ_INTERFACE=${WGQ_INTERFACE}"
+
+            declare -g -A wg_quick_location
             ;;
         up)
             info
@@ -1449,12 +1459,46 @@ function wg_quick_interface() {
                 error "'${WGQ_CONFIG_FILE}' delete error"
             fi
             ;;
+        event)
+            local event="${1}" && shift
+
+            case "${event}" in
+                location)
+                    local peer_name="${1}" && shift
+                    local location="${1}" && shift
+
+                    wg_quick_location["${peer_name}"]="${location}"
+                    ;;
+            esac
+            ;;
         set)
-            wg_interface "${action}" ${@}
+            local name="${1}" && shift
+
+            case "${name}" in
+                location)
+                    local peer_name="${1}" && shift
+                    local location="${1}" && shift
+
+                    event fire location "${peer_name} ${location}"
+                    ;;
+                *)
+                    wg_interface "${action}" "${name}" ${@}
+            esac
             ;;
         get)
             local name="${1}" && shift
+
             case "${name}" in
+                is_peer_local)
+                    local peer_name="${1}" && shift
+
+                    if [ "${wg_quick_location[${peer_name}]}" == "local" ]
+                    then
+                        return 0
+                    else
+                        return 1
+                    fi
+                    ;;
                 *)
                     wg_interface "${action}" "${name}" ${@}
             esac
@@ -1798,6 +1842,7 @@ function wireproxy_interface() {
             ;;
         set)
             local name="${1}" && shift
+
             case "${name}" in
                 host_port)
                     local port="${1}" && shift
@@ -1832,16 +1877,10 @@ function wireproxy_interface() {
             ;;
         get)
             local name="${1}" && shift
+
             case "${name}" in
                 is_peer_local)
-                    local peer_name="${1}" && shift
-
-                    if grep -q "Endpoint = ${config["peer_wg_quick_local_ips_${peer_name}"]}" < "${WGQ_CONFIG_FILE}"
-                    then
-                        return 0
-                    else
-                        return 1
-                    fi
+                    wg_quick_interface "${action}" "${name}" ${@}
                     ;;
                 peer_status)
                     local peer_name="${1}" && shift
