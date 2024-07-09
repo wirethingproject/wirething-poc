@@ -1138,15 +1138,18 @@ function tasks() {
 
             for _name in "${!_tasks[@]}"
             do
-                read frequency start stop task <<<"${_tasks[${_name}]}"
-                read next <<<"${_tasks_next[${_name}]}"
-                read now <<<"${EPOCHSECONDS}"
+                local params=(${_tasks[${_name}]})
+
+                frequency="${params[0]}"
+                start="${params[1]}"
+                stop="${params[2]}"
+                task="${params[@]:3}"
+
+                next="${_tasks_next[${_name}]}"
+                now="${EPOCHSECONDS}"
 
                 if [[ ${now} -ge ${start} && ${now} -ge ${next} && ${now} -lt ${stop} ]]
                 then
-                    # debug "_name=${_name} frequency=${frequency} start=${start} stop=${stop} next=${next} now=${now}"
-                    ## debug "_name=${_name} task='${task}'"
-
                     _tasks_next["${_name}"]="$((${now} + ${frequency}))"
                     ${task} || error "task '${task}' returns ${?}"
                 fi
@@ -1235,7 +1238,7 @@ function wg_interface() {
 
                     debug "peer_status ${peer_name} ${result:-''}"
 
-                    read "${var_name}" <<<"${result}"
+                    read -N "${#result}" "${var_name}" <<<"${result}"
                     ;;
                 host_status)
                     shift # var_name
@@ -1253,7 +1256,7 @@ function wg_interface() {
 
                     debug "host_status ${result}"
 
-                    read "${var_name}" <<<"${result}"
+                    read -N "${#result}" "${var_name}" <<<"${result}"
                     ;;
             esac
             ;;
@@ -1856,7 +1859,7 @@ function wireproxy_interface() {
 
                     debug "peer_status ${result} last_keepalive=${wireproxy_last_keepalive["${peer_name}"]} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
 
-                    read "${var_name}" <<<"${result}"
+                    read -N "${#result}" "${var_name}" <<<"${result}"
                     ;;
                 host_status)
                     shift # var_name
@@ -1901,7 +1904,7 @@ function wireproxy_interface() {
 
                     debug "host_status ${result}"
 
-                    read "${var_name}" <<<"${result}"
+                    read -N "${#result}" "${var_name}" <<<"${result}"
                     ;;
             esac
             ;;
