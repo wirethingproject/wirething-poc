@@ -1213,6 +1213,9 @@ function wg_interface() {
         get)
             name="${1}" && shift
             case "${name}" in
+                generates_status_events)
+                    return 1
+                    ;;
                 is_peer_local)
                     local peer_name="${1}" && shift
 
@@ -1494,6 +1497,9 @@ function wg_quick_interface() {
             local name="${1}" && shift
 
             case "${name}" in
+                generates_status_events)
+                    return 1
+                    ;;
                 is_peer_local)
                     local peer_name="${1}" && shift
 
@@ -1929,6 +1935,9 @@ function wireproxy_interface() {
             local name="${1}" && shift
 
             case "${name}" in
+                generates_status_events)
+                    return 0
+                    ;;
                 is_peer_local)
                     wg_quick_interface "${action}" "${name}" ${@}
                     ;;
@@ -3842,16 +3851,22 @@ function peer() {
                 on_peer_start)
                     info "${new_event}"
 
-                    tasks register name "peer_poll_status_${peer_name}" \
-                        frequency "${WT_PEER_OFFLINE_PULL_STATUS_INTERVAL}" \
-                        start "+${WT_PEER_OFFLINE_START_DELAY}" \
-                        stop never \
-                        task "peer poll_status ${peer_name}"
+                    if ! interface get generates_status_events
+                    then
+                        tasks register name "peer_poll_status_${peer_name}" \
+                            frequency "${WT_PEER_OFFLINE_PULL_STATUS_INTERVAL}" \
+                            start "+${WT_PEER_OFFLINE_START_DELAY}" \
+                            stop never \
+                            task "peer poll_status ${peer_name}"
+                    fi
                     ;;
                 on_peer_stop)
                     info "${new_event}"
 
-                    tasks unregister name "peer_poll_status_${peer_name}"
+                    if ! interface get generates_status_events
+                    then
+                        tasks unregister name "peer_poll_status_${peer_name}"
+                    fi
                     ;;
                 on_peer_offline)
                     info "${new_event}"
