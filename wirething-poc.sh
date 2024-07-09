@@ -1037,51 +1037,48 @@ function event() {
     local action="${1}" && shift
 
     case "${action}" in
+        init)
+            info
+
+            EVENT_FIFO_FILE="${WT_EPHEMERAL_PATH}/event"
+            ;;
         up)
             info
 
-            coproc EVENT (cat -u)
+            mkfifo "${EVENT_FIFO_FILE}"
+            exec {_event_fd}<> "${EVENT_FIFO_FILE}"
             ;;
         down)
-            if [[ ! -v EVENT_PID ]]
+            exec {_event_fd}>&-
+
+            if rm -f "${EVENT_FIFO_FILE}"
             then
-                info "'event' was not running"
+                info "'${EVENT_FIFO_FILE}' was successfully deleted"
             else
-                if kill -TERM "${EVENT_PID}" 2>&${null}
-                then
-                    info "'event' pid=${EVENT_PID} was successfully stopped"
-                else
-                    info "'event' pid=${EVENT_PID} was not running"
-                fi
+                error "'${EVENT_FIFO_FILE}' delete error"
             fi
             ;;
         fire)
-            if [[ ! -v EVENT ]]
-            then
-                info "'event' is not running"
-                return 0
-            fi
+            local len event="${FUNCNAME[1]} event ${@}"
+            debug "len=${#event} '${event}'"
 
-            debug "${FUNCNAME[1]} event ${@}"
-            if ! echo "${FUNCNAME[1]} event ${@}" >&${EVENT[1]}
+            printf -v "len" "%02X" "${#event}"
+            if ! echo -ne "\x${len}${event}" >&${_event_fd}
             then
-                info "'event' is not running"
+                info "error writing '${event}'"
             fi
             ;;
         run)
-            if [[ ! -v EVENT ]]
-            then
-                info "'event' is not running"
-                return 0
-            fi
+            local event hexlen len
 
-            local event event_fd="${EVENT[0]}"
-
-            while read -t 0 -u "${event_fd}"
+            while read -t 0 -u "${_event_fd}"
             do
-                if read -u "${event_fd}" event
+                read -N 1 -u "${_event_fd}" "hexlen" || break
+                printf -v "len" "%d" "'${hexlen}"
+
+                if read -N "${len}" -u "${_event_fd}" "event"
                 then
-                    debug "${event}"
+                    debug "len=${len} '${event}'"
                     ${event}
                 else
                     break
