@@ -343,6 +343,7 @@ function log() {
 
     case "${log_action}" in
         deps)
+            :
             ;;
         init)
             WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
@@ -1095,6 +1096,7 @@ function tasks() {
 
     case "${action}" in
         deps)
+            :
             ;;
         init)
             info
