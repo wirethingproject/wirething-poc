@@ -81,6 +81,7 @@ function os() {
             ;;
         init)
             OS_PID="${BASHPID}"
+            OS_LOCALE="C"
 
             alias die="os die"
 
@@ -106,6 +107,8 @@ function os() {
                             ANDROID_VERSION="$(getprop ro.build.version.release)"
                             ANDROID_SDK="$(getprop ro.build.version.sdk)"
                             ANDROID_MIN_SDK="$(getprop ro.build.version.min_supported_target_sdk)"
+
+                            OS_LOCALE="UTF-8"
 
                             if [ -v TERMUX_VERSION ] &&
                                 type -a termux-notification >&${null} 2>&${null}
@@ -1602,6 +1605,13 @@ function wireproxy_interface() {
             WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
             WIREPROXY_FORWARD_PORT_LIST="${WIREPROXY_FORWARD_PORT_LIST:-}"
 
+            if [ "${OS_LOCALE}" == "UTF-8" ]
+            then
+                WIREPROXY_LOG_PEER_LEN="9"
+            else
+                WIREPROXY_LOG_PEER_LEN="11"
+            fi
+
             if [ ! -f "${WIREPROXY_COMMAND}" ]
             then
                 die "command in WIREPROXY_COMMAND not found *${WIREPROXY_COMMAND}*"
@@ -1616,24 +1626,27 @@ function wireproxy_interface() {
             wg_quick_interface init
 
             declare -g -A wireproxy_name_table
+            declare -g -A wireproxy_peer_status
             declare -g -A wireproxy_last_keepalive
             ;;
         up)
             info
 
             local wg_pub="${config["host_wg_pub"]}"
-            local index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
+            local index="${wg_pub::4}…${wg_pub:(-5):4}"
             wireproxy_name_table["${index}"]="${config["host_name"]}"
 
             for _peer_name in ${config["peer_name_list"]}
             do
                 wg_pub="${config["peer_wg_pub_${_peer_name}"]}"
-                index=" peer(${wg_pub::4}…${wg_pub:(-5):4}) - "
+                index="${wg_pub::4}…${wg_pub:(-5):4}"
                 wireproxy_name_table["${index}"]="${_peer_name}"
             done
 
             for _peer_name in ${config["peer_name_list"]}
             do
+                wireproxy_peer_status["${_peer_name}"]="wait"
+
                 if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}" ]
                 then
                     echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}"
@@ -1778,50 +1791,85 @@ function wireproxy_interface() {
 
             raw_log_param "${line}" wireproxy "${log_level}" "${log_index}"
 
-            if ! grep "peer(" <<<"${line}" >&${null}
-            then
-                case "${line}" in
-                    *"Interface state was Down, requested Up, now Up")
-                        info "interface is ready"
-                        touch "${WIREPROXY_READY_FILE}"
-                        event fire ready
-                        ;;
-                    "ERROR"*"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
-                        event fire punch
-                        ;;
-                    *"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
-                        info "interface was failed"
-                        sleep 10
-                        ;;
-                    *"address already in use")
-                        info "interface was failed"
-                        touch "${WIREPROXY_READY_FILE}"
-                        ;;
-                esac
-            else
-                local index="$(echo "${line}" | grep -o " peer(.*) - ")"
-                local peer_name="${wireproxy_name_table["${index}"]}"
+            local index="${line:32:${WIREPROXY_LOG_PEER_LEN}}"
 
-                if [ "${peer_name}" == "" ]
-                then
-                    error "peer_name="${peer_name:=''}" peer not found: ${line}"
-                    continue
-                fi
+            case "${line}" in
+                *"Receiving keepalive packet")
+                    local peer_name="${wireproxy_name_table["${index}"]}"
 
-                case "${line}" in
-                    *"Receiving keepalive packet")
-                        event fire keepalive "${peer_name} ${EPOCHSECONDS}"
-                        ;;
-                    *"Received handshake response")
-                        event fire keepalive "${peer_name} ${EPOCHSECONDS}"
-                        ;;
-                esac
-            fi
+                    if [ "${wireproxy_peer_status["${peer_name}"]}" != "online" ]
+                    then
+                        wireproxy_peer_status["${peer_name}"]="online"
+                        event fire status "${peer_name} online"
+                    fi
+
+                    event fire keepalive "${peer_name} ${EPOCHSECONDS}"
+                    ;;
+                *"Received handshake response")
+                    local peer_name="${wireproxy_name_table["${index}"]}"
+
+                    if [ "${wireproxy_peer_status["${peer_name}"]}" != "online" ]
+                    then
+                        wireproxy_peer_status["${peer_name}"]="online"
+                        event fire status "${peer_name} online"
+                    fi
+
+                    event fire keepalive "${peer_name} ${EPOCHSECONDS}"
+                    ;;
+                *"Failed to send data packets"*)
+                    local peer_name="${wireproxy_name_table["${index}"]}"
+
+                    if [ "${wireproxy_peer_status["${peer_name}"]}" != "offline" ]
+                    then
+                        wireproxy_peer_status["${peer_name}"]="offline"
+                        event fire status "${peer_name} offline"
+                    fi
+                    ;;
+                *"Failed to send handshake initiation"*)
+                    local peer_name="${wireproxy_name_table["${index}"]}"
+
+                    if [ "${wireproxy_peer_status["${peer_name}"]}" != "offline" ]
+                    then
+                        wireproxy_peer_status["${peer_name}"]="offline"
+                        event fire status "${peer_name} offline"
+                    fi
+                    ;;
+                *"Handshake did not complete after"*)
+                    local peer_name="${wireproxy_name_table["${index}"]}"
+
+                    if [ "${wireproxy_peer_status["${peer_name}"]}" != "offline" ]
+                    then
+                        wireproxy_peer_status["${peer_name}"]="offline"
+                        event fire status "${peer_name} offline"
+                    fi
+                    ;;
+                *"Interface state was Down, requested Up, now Up")
+                    info "interface is ready"
+                    touch "${WIREPROXY_READY_FILE}"
+                    event fire ready
+                    ;;
+                "ERROR"*"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
+                    event fire punch
+                    ;;
+                *"IPC error -48: failed to set listen_port: listen udp4 :"*": bind: address already in use")
+                    info "interface was failed"
+                    sleep 10
+                    ;;
+                *"address already in use")
+                    info "interface was failed"
+                    touch "${WIREPROXY_READY_FILE}"
+                    ;;
+            esac
             ;;
         event)
             local event="${1}" && shift
 
             case "${event}" in
+                status)
+                    local peer_name="${1}" && shift
+                    local status="${1}" && shift
+                    peer_state set_polled_status "${peer_name}" "${status}"
+                    ;;
                 keepalive)
                     local peer_name="${1}" && shift
                     local keepalive="${1}" && shift
@@ -3571,6 +3619,8 @@ function peer_state() {
             declare -g -A _peer_event_transitions=(
                 ["peer_empty_start"]="on_peer_start"
                 ["peer_start_wait"]=""
+                ["peer_start_offline"]="on_peer_offline"
+                ["peer_start_online"]=""
                 ["peer_wait_offline"]="on_peer_offline"
                 ["peer_wait_online"]=""
                 ["peer_online_offline"]="on_peer_offline"
@@ -3583,6 +3633,8 @@ function peer_state() {
             declare -g -A _peer_status_transitions=(
                 ["peer_empty_start"]="start"
                 ["peer_start_wait"]="wait"
+                ["peer_start_offline"]="offline"
+                ["peer_start_online"]="online"
                 ["peer_wait_offline"]="offline"
                 ["peer_wait_online"]="online"
                 ["peer_online_offline"]="offline"
