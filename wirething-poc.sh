@@ -3467,7 +3467,7 @@ function host() {
 
     case "${action}" in
         deps)
-            echo ""
+            :
             ;;
         init)
             info
@@ -3736,7 +3736,7 @@ function peer() {
 
     case "${action}" in
         deps)
-            echo ""
+            :
             ;;
         init)
             info
