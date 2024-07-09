@@ -3900,6 +3900,7 @@ function wirething_main() {
             sys start
 
             config init
+            event init
             tasks init
 
             wt_type_for_each init
