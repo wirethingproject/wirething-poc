@@ -1186,6 +1186,9 @@ function wg_interface() {
             WG_INTERFACE="${WG_INTERFACE:?Variable not set}"
             WG_HANDSHAKE_TIMEOUT="${WG_HANDSHAKE_TIMEOUT:-125}" # 125 seconds
             info "WG_INTERFACE=${WG_INTERFACE}"
+
+            declare -g -A wg_peer_status
+            declare -g -A wg_peer_address
             ;;
         up)
             info
@@ -1199,6 +1202,12 @@ function wg_interface() {
             then
                 die "wireguard interface *${WG_INTERFACE:-}* not found."
             fi
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                wg_peer_status["${_peer_name}"]="wait"
+                wg_peer_address["${_peer_name}"]="$(wg_interface get peer_address "${_peer_name}")"
+            done
             ;;
         set)
             name="${1}" && shift
@@ -1246,13 +1255,16 @@ function wg_interface() {
                     shift # var_name
                     local var_name="${1}" && shift
 
-                    local address="$(wg_interface get peer_address "${peer_name}")"
-
                     local result="offline"
 
-                    if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
+                    if ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_DEBUG} | raw_trace
                     then
                         result="online"
+                    fi
+
+                    if [ "${wg_peer_status["${peer_name}"]}" != "${result}" ]
+                    then
+                        wg_peer_status["${peer_name}"]="${result}"
                     fi
 
                     debug "peer_status ${peer_name} ${result:-''}"
@@ -1265,13 +1277,13 @@ function wg_interface() {
 
                     local result="offline"
 
-                    while read address
+                    for _peer_name in ${config["peer_name_list"]}
                     do
-                        if ping "${address}" 2>&${WT_LOG_DEBUG} | raw_trace
+                        if [ "${wg_peer_status["${_peer_name}"]}" == "online" ]
                         then
                             result="online"
                         fi
-                    done < <(wg show "${WG_INTERFACE}" allowed-ips | cut -f 2 | sed "s,/32,,")
+                    done
 
                     debug "host_status ${result}"
 
@@ -1452,6 +1464,7 @@ function wg_quick_interface() {
             esac
 
             wg_interface init
+            wg_interface up
             ;;
         down)
             if [[ ! -v WGQ_CONFIG_FILE ]]
