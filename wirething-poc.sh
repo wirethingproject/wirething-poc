@@ -1860,7 +1860,7 @@ function wireproxy_interface() {
                     if [ "${wireproxy_peer_status["${peer_name}"]}" != "online" ]
                     then
                         wireproxy_peer_status["${peer_name}"]="online"
-                        event fire status "${peer_name} online"
+                        event fire peer_status "${peer_name} online"
                     fi
 
                     event fire keepalive "${peer_name} ${EPOCHSECONDS}"
@@ -1871,7 +1871,7 @@ function wireproxy_interface() {
                     if [ "${wireproxy_peer_status["${peer_name}"]}" != "online" ]
                     then
                         wireproxy_peer_status["${peer_name}"]="online"
-                        event fire status "${peer_name} online"
+                        event fire peer_status "${peer_name} online"
                     fi
 
                     event fire keepalive "${peer_name} ${EPOCHSECONDS}"
@@ -1882,7 +1882,7 @@ function wireproxy_interface() {
                     if [ "${wireproxy_peer_status["${peer_name}"]}" != "offline" ]
                     then
                         wireproxy_peer_status["${peer_name}"]="offline"
-                        event fire status "${peer_name} offline"
+                        event fire peer_status "${peer_name} offline"
                     fi
                     ;;
                 *"Failed to send handshake initiation"*)
@@ -1891,7 +1891,7 @@ function wireproxy_interface() {
                     if [ "${wireproxy_peer_status["${peer_name}"]}" != "offline" ]
                     then
                         wireproxy_peer_status["${peer_name}"]="offline"
-                        event fire status "${peer_name} offline"
+                        event fire peer_status "${peer_name} offline"
                     fi
                     ;;
                 *"Handshake did not complete after"*)
@@ -1900,7 +1900,7 @@ function wireproxy_interface() {
                     if [ "${wireproxy_peer_status["${peer_name}"]}" != "offline" ]
                     then
                         wireproxy_peer_status["${peer_name}"]="offline"
-                        event fire status "${peer_name} offline"
+                        event fire peer_status "${peer_name} offline"
                     fi
                     ;;
                 *"Interface state was Down, requested Up, now Up")
@@ -1925,14 +1925,17 @@ function wireproxy_interface() {
             local event="${1}" && shift
 
             case "${event}" in
-                status)
+                peer_status)
                     local peer_name="${1}" && shift
                     local status="${1}" && shift
+
+                    wireproxy_peer_status["${peer_name}"]="${status}"
                     peer_state set_polled_status "${peer_name}" "${status}"
                     ;;
                 keepalive)
                     local peer_name="${1}" && shift
                     local keepalive="${1}" && shift
+
                     wireproxy_last_keepalive["${peer_name}"]="${keepalive}"
                     ;;
                 punch)
