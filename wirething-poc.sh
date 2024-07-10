@@ -1488,6 +1488,13 @@ function wg_quick_interface() {
                 error "'${WGQ_CONFIG_FILE}' delete error"
             fi
             ;;
+        reload)
+            info
+
+            wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+            wg syncconf "${WG_INTERFACE}" <(wg-quick strip "${WGQ_CONFIG_FILE}")
+            wg set "${WG_INTERFACE}" private-key "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}"
+            ;;
         event)
             local event="${1}" && shift
 
@@ -1510,8 +1517,35 @@ function wg_quick_interface() {
 
                     event fire location "${peer_name} ${location}"
                     ;;
-                *)
-                    wg_interface "${action}" "${name}" ${@}
+                host_port)
+                    local port="${1}" && shift
+                    info "host_port ${port:-''}"
+
+                    if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
+                    then
+                        wg_quick_interface reload
+                    fi
+                    ;;
+                peer_endpoint)
+                    local peer_name="${1}" && shift
+                    local endpoint="${1}" && shift
+                    info "peer_endpoint ${peer_name} ${endpoint}"
+
+                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
+                    then
+                        wg_quick_interface reload
+                    fi
+                    ;;
+                peer_local_port)
+                    local peer_name="${1}" && shift
+                    local local_port="${1}" && shift
+                    info "peer_endpoint ${peer_name} ${local_port}"
+
+                    if ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
+                    then
+                        wg_quick_interface reload
+                    fi
+                    ;;
             esac
             ;;
         get)
@@ -1681,7 +1715,6 @@ function wireproxy_interface() {
                 else
                     wireproxy_last_keepalive["${_peer_name}"]="$(cat "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}")"
                 fi
-
             done
 
             coproc WIREPROXY_BG (wireproxy_interface run)
