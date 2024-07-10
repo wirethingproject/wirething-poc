@@ -130,6 +130,7 @@ function os() {
         die)
             echo "ERROR [---------] ${FUNCNAME[1]:-} ${die_action:-} ${*}" >&${err}
             os terminate
+            exit 1
             ;;
         terminate)
             pkill -TERM -g "${OS_PID}"
