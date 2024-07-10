@@ -2896,13 +2896,6 @@ function wirething() {
                     debug "peer_endpoint_update_time ${peer_name} ${timestamp:-''}"
                     echo "${timestamp:-0}"
                     ;;
-                peer_local_port)
-                    local peer_name="${1}" && shift
-
-                    local local_port="$(cat "${WT_PEER_ENDPOINT_PATH}/${peer_name}_local_port" 2>&${WT_LOG_DEBUG})"
-                    debug "peer_local_port ${peer_name} ${local_port:-0}"
-                    echo "${local_port:-0}"
-                    ;;
             esac
             ;;
         punch_host_endpoint)
