@@ -1688,7 +1688,6 @@ function wireproxy_interface() {
 
             declare -g -A wireproxy_name_table
             declare -g -A wireproxy_peer_status
-            declare -g -A wireproxy_last_keepalive
             ;;
         up)
             info
@@ -1707,14 +1706,6 @@ function wireproxy_interface() {
             for _peer_name in ${config["peer_name_list"]}
             do
                 wireproxy_peer_status["${_peer_name}"]="wait"
-
-                if [ ! -f "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}" ]
-                then
-                    echo "0" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}"
-                    wireproxy_last_keepalive["${_peer_name}"]="0"
-                else
-                    wireproxy_last_keepalive["${_peer_name}"]="$(cat "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}")"
-                fi
             done
 
             coproc WIREPROXY_BG (wireproxy_interface run)
@@ -1731,14 +1722,6 @@ function wireproxy_interface() {
                     info "'wireproxy_bg' pid=${WIREPROXY_BG_PID} was not running"
                 fi
             fi
-
-            for _peer_name in ${config["peer_name_list"]}
-            do
-                if [ -v wireproxy_last_keepalive["${_peer_name}"] ]
-                then
-                    echo "${wireproxy_last_keepalive["${_peer_name}"]}" > "${WT_PEER_LAST_KEEPALIVE_PATH}/${_peer_name}"
-                fi
-            done
             ;;
         start)
             info
@@ -1862,8 +1845,6 @@ function wireproxy_interface() {
                         wireproxy_peer_status["${peer_name}"]="online"
                         event fire peer_status "${peer_name} online"
                     fi
-
-                    event fire keepalive "${peer_name} ${EPOCHSECONDS}"
                     ;;
                 *"Received handshake response")
                     local peer_name="${wireproxy_name_table["${index}"]}"
@@ -1873,8 +1854,6 @@ function wireproxy_interface() {
                         wireproxy_peer_status["${peer_name}"]="online"
                         event fire peer_status "${peer_name} online"
                     fi
-
-                    event fire keepalive "${peer_name} ${EPOCHSECONDS}"
                     ;;
                 *"Failed to send data packets"*)
                     local peer_name="${wireproxy_name_table["${index}"]}"
@@ -1931,12 +1910,6 @@ function wireproxy_interface() {
 
                     wireproxy_peer_status["${peer_name}"]="${status}"
                     peer_state set_polled_status "${peer_name}" "${status}"
-                    ;;
-                keepalive)
-                    local peer_name="${1}" && shift
-                    local keepalive="${1}" && shift
-
-                    wireproxy_last_keepalive["${peer_name}"]="${keepalive}"
                     ;;
                 punch)
                     if wirething punch_host_endpoint
@@ -4077,7 +4050,6 @@ function wirething_main() {
             fi
 
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
-            WT_PEER_LAST_KEEPALIVE_PATH="${WT_STATE_PATH}/peer_last_keepalive"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
             WT_PAUSE_AFTER_CONNECTION_LOST="${WT_PAUSE_AFTER_CONNECTION_LOST:-10}" # 10 seconds
 
@@ -4102,7 +4074,6 @@ function wirething_main() {
             mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_ERROR_PATH}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
-            mkdir -p "${WT_PEER_LAST_KEEPALIVE_PATH}"
 
             config up
             event up
