@@ -1054,6 +1054,11 @@ function event() {
             exec {_event_fd}<> "${EVENT_FIFO_FILE}"
             ;;
         down)
+            if [[ ! -v _event_fd ]]
+            then
+                return 0
+            fi
+
             exec {_event_fd}>&-
 
             if rm -f "${EVENT_FIFO_FILE}"
@@ -1275,19 +1280,20 @@ function wg_interface() {
             esac
             ;;
         status)
-            {
-                wg show interfaces
-            } | {
-                local status="down"
+            local status="down"
 
-                if [ "${WG_INTERFACE:-}" != "" ] && grep "${WG_INTERFACE}" 1>&${WT_LOG_DEBUG}
+            if [[ ! -v WG_INTERFACE ]]
+            then
+                info "WG_INTERFACE was not set"
+            else
+                if wg show "${WG_INTERFACE}" 2>&1  >&"${null}"
                 then
                     status="up"
                 fi
+            fi
 
-                info "${status}"
-                echo "${status}"
-            }
+            info "${status}"
+            echo "${status}"
             ;;
     esac
 }
@@ -1444,6 +1450,7 @@ function wg_quick_interface() {
                 *)
                     die "OS *${OSTYPE}* not supported"
             esac
+
             wg_interface init
             ;;
         down)
@@ -3368,6 +3375,22 @@ function host_state() {
         stop_host)
             info
 
+            if [[ ! -v _host_state ]]
+            then
+                return 0
+            fi
+
+            if [[ ! -v _host_state["current_status"] ]]
+            then
+                return 0
+            fi
+
+            case "${_host_state["current_status"]}" in
+                empty|start)
+                    return 0
+                    ;;
+            esac
+
             host_state set_polled_status "stop"
 
             host_state transition
@@ -3671,6 +3694,17 @@ function peer_state() {
             local peer_name="${1}" && shift
             info "${peer_name}"
 
+            if [[ ! -v _peer_state["current_status_${peer_name}"] ]]
+            then
+                return 0
+            fi
+
+            case "${_peer_state["current_status_${peer_name}"]}" in
+                empty|start)
+                    return 0
+                    ;;
+            esac
+
             peer_state set_polled_status "${peer_name}" "stop"
 
             peer_state transition "${peer_name}"
@@ -3823,6 +3857,11 @@ function peer() {
             ;;
         stop)
             info
+
+            if [[ ! -v config ]]
+            then
+                return 0
+            fi
 
             for _peer_name in ${config["peer_name_list"]}
             do
