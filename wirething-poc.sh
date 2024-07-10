@@ -1410,7 +1410,7 @@ function wg_quick_interface() {
             # WT_*
 
             WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY="${WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY:-true}"
-            WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-15}" # 15 seconds
+            WGQ_PEER_PERSISTENT_KEEPALIVE="${WGQ_PEER_PERSISTENT_KEEPALIVE:-30}" # 30 seconds
 
             WGQ_LOG_LEVEL="${WGQ_LOG_LEVEL:-}"
             WGQ_USERSPACE="${WGQ_USERSPACE:-}"
