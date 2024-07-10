@@ -2003,16 +2003,12 @@ function wireproxy_interface() {
                     shift # var_name
                     local var_name="${1}" && shift
 
-                    local keepalive_delta="$((${EPOCHSECONDS} - ${wireproxy_last_keepalive["${peer_name}"]}))"
-
                     local result="offline"
 
-                    if [[ ${keepalive_delta} -lt ${WIREPROXY_PEER_STATUS_TIMEOUT} ]]
+                    if [[ "${wireproxy_peer_status["${peer_name}"]}" == "online" ]]
                     then
                         result="online"
                     fi
-
-                    debug "peer_status ${result} last_keepalive=${wireproxy_last_keepalive["${peer_name}"]} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_PEER_STATUS_TIMEOUT}"
 
                     read -N "${#result}" "${var_name}" <<<"${result}"
                     ;;
@@ -2021,38 +2017,35 @@ function wireproxy_interface() {
                     local var_name="${1}" && shift
 
                     local all_local="true"
-                    local last_keepalive=0
-                    local last_local_keepalive=0
+                    local has_online_peer="false"
+                    local has_online_local_peer="false"
 
                     for _peer_name in ${config["peer_name_list"]}
                     do
                         if wireproxy_interface get is_peer_local "${_peer_name}"
                         then
-                            if [[ "${wireproxy_last_keepalive["${_peer_name}"]}" -gt "${last_local_keepalive}" ]]
+                            if [[ "${wireproxy_peer_status["${_peer_name}"]}" == "online" ]]
                             then
-                                last_local_keepalive="${wireproxy_last_keepalive["${_peer_name}"]}"
+                                has_online_local_peer="true"
                             fi
                         else
                             all_local="false"
 
-                            if [[ "${wireproxy_last_keepalive["${_peer_name}"]}" -gt "${last_keepalive}" ]]
+                            if [[ "${wireproxy_peer_status["${_peer_name}"]}" == "online" ]]
                             then
-                                last_keepalive="${wireproxy_last_keepalive["${_peer_name}"]}"
+                                has_online_peer="true"
                             fi
                         fi
                     done
 
                     if [ "${all_local}" == "true" ]
                     then
-                        last_keepalive="${last_local_keepalive}"
+                        has_online_peer="${has_online_local_peer}"
                     fi
 
-                    local keepalive_delta="$((${EPOCHSECONDS} - ${last_keepalive}))"
-
-                    debug "host_status last_keepalive=${last_keepalive} keepalive_delta=${keepalive_delta} timeout=${WIREPROXY_HOST_STATUS_TIMEOUT}"
                     local result="offline"
 
-                    if [[ ${keepalive_delta} -lt ${WIREPROXY_HOST_STATUS_TIMEOUT} ]]
+                    if [[ "${has_online_peer}" == "true" ]]
                     then
                         result="online"
                     fi
