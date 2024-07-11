@@ -2318,22 +2318,22 @@ function ntfy_pubsub() {
                     ;;
                 "curl"*"timed out"*)
                     debug "$(short "${topic}") response: ${subscribe_response}"
-                    echo '{"event": "timeout"}'
+                    echo '{"event":"timeout"}'
                     return 1
                     ;;
                 "curl: (56) Recv failure: Software caused connection abort")
                     info "$(short "${topic}") response: ${subscribe_response}"
-                    echo '{"event": "connection_lost"}'
+                    echo '{"event":"connection_lost"}'
                     return 1
                     ;;
                 "curl"*)
                     error "$(short "${topic}") response: ${subscribe_response}"
-                    echo '{"event": "error"}'
+                    echo '{"event":"error"}'
                     return 1
                     ;;
                 "{"*"error"*)
                     error "$(short "${topic}") response: ${subscribe_response}"
-                    echo '{"event": "error"}'
+                    echo '{"event":"error"}'
                     return 1
                     ;;
                 *)
@@ -2950,22 +2950,11 @@ function wirething() {
             trap "" "EXIT"
             ;;
         subscribe_encrypted_peer_endpoint_process)
-            local event="$(echo "${line}" | jq -r ".event")"
-
-            case "${event}" in
-                error|timeout)
-                    debug "event=${event}"
-                    sleep "${WT_PAUSE_AFTER_ERROR}"
+            case "${line}" in
+                *'"event":"keepalive"'*)
+                    :
                     ;;
-                connection_lost)
-                    debug "event=${event}"
-                    sleep "${WT_PAUSE_AFTER_CONNECTION_LOST}"
-                    event fire punch
-                    ;;
-                keepalive)
-                    debug "event=${event}"
-                    ;;
-                message)
+                *'"event":"message"'*)
                     local topic="$(echo "${line}" | jq -r ".topic")"
                     local event_time="$(echo "${line}" | jq -r ".time")"
                     local encrypted_message="$(echo "${line}" | jq -r ".message")"
@@ -2992,8 +2981,24 @@ function wirething() {
                         event fire new_peer_endpoint "${peer_name} ${new_peer_endpoint} ${new_local_port:-0} ${event_time}"
                     fi
                     ;;
+                *'"event":"open"'*)
+                    :
+                    ;;
+                *'"event":"timeout"'*)
+                    info "event=timeout"
+                    sleep "${WT_PAUSE_AFTER_ERROR}"
+                    ;;
+                *'"event":"connection_lost"'*)
+                    info "event=connection_lost"
+                    sleep "${WT_PAUSE_AFTER_CONNECTION_LOST}"
+                    event fire punch
+                    ;;
+                *'"event":"error"'*)
+                    info "event=error"
+                    sleep "${WT_PAUSE_AFTER_ERROR}"
+                    ;;
                 *)
-                    debug "event=${event}"
+                    info "event=${line}"
             esac
             ;;
         event)
