@@ -3344,6 +3344,8 @@ function host_state() {
 
             local transition="host_${current_status}_${polled_status}"
 
+            trace "${transition}"
+
             local new_event="${_host_event_transitions["${transition}"]}"
 
             host on_event "${new_event}" "${host_name}"
@@ -3657,6 +3659,8 @@ function peer_state() {
             fi
 
             local transition="peer_${current_status}_${polled_status}"
+
+            trace "${transition}"
 
             local new_event="${_peer_event_transitions["${transition}"]}"
 
