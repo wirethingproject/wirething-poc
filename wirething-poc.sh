@@ -389,14 +389,12 @@ function log() {
             alias short4="log short4"
             alias format_time="log format_time"
 
+            alias trace="log trace"
             alias debug="log debug"
             alias info="log info"
             alias error="log error"
 
-            alias raw_trace="log raw_trace"
-            alias hex_raw_trace="log hex_raw_trace"
-            alias raw_log="log raw_log"
-            alias raw_log_param="log raw_log_param"
+            alias custom_log="log custom_log"
             ;;
         short4)
             echo "${1::4}"
@@ -416,6 +414,9 @@ function log() {
 
             printf -v "${var_name}" "%.2u:%(%M:%S)T" "${hours}" "${seconds}"
             ;;
+        trace)
+            sys_log "TRACE ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
+            ;;
         debug)
             sys_log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
             ;;
@@ -425,66 +426,7 @@ function log() {
         error)
             sys_log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_ERROR} || true
             ;;
-        raw_trace)
-            sys_log "TRACE" >&${WT_LOG_TRACE} || true
-            cat >&${WT_LOG_TRACE} || true
-            ;;
-        hex_raw_trace)
-            sys_log "TRACE" >&${WT_LOG_TRACE} || true
-            hexdump -C >&${WT_LOG_TRACE} || true
-            ;;
-        raw_log_set_level)
-            local _level
-
-            if [ "${level}" == "from_line" ]
-            then
-                _level="${line}"
-            else
-                _level="${level}"
-            fi
-
-            case "${_level}" in
-                trace*|TRACE*)
-                    level_name="TRACE"
-                    ;;
-                debug*|DEBUG*)
-                    level_name="DEBUG"
-                    ;;
-                info*|INFO*)
-                    level_name="INFO"
-                    ;;
-                error*|ERROR*)
-                    level_name="ERROR"
-                    ;;
-                *)
-                    level_name="ERROR"
-            esac
-
-            level_fd="${_fd_from_level[${level_name,,}]}"
-            level_name="${level_name/INFO/INFO }"
-            ;;
-        raw_log)
-            local app="${1}" && shift
-            local level="${1}" && shift
-            local start_index="${1:-0}" && shift
-
-            local line=""
-            local level_fd=""
-            local level_name=""
-
-            if [ "${level}" == "from_line" ]
-            then
-                while read line
-                do
-                    log raw_log_set_level
-                    sys_log "${level_name} [${app}] ${line:${start_index}}" >&${level_fd} || true
-                done
-            else
-                log raw_log_set_level
-                cat | cut -c "$((${start_index} + 1))-" | sed "s,^,$(sys_log "${level_name} [${app}] ")," >&${level_fd} || true
-            fi
-            ;;
-        raw_log_param)
+        custom_log)
             local line="${1}" && shift
             local app="${1}" && shift
             local level="${1}" && shift
@@ -1257,7 +1199,7 @@ function wg_interface() {
 
                     local result="offline"
 
-                    if ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_DEBUG} | raw_trace
+                    if ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_TRACE} 1>&${WT_LOG_TRACE}
                     then
                         result="online"
                     fi
@@ -1449,8 +1391,6 @@ function wg_quick_interface() {
 
             info "wg-quick up ${WGQ_CONFIG_FILE}"
             wg-quick up "${WGQ_CONFIG_FILE}" 2>&${WT_LOG_DEBUG}
-
-            cat "${WGQ_CONFIG_FILE}" | raw_trace
 
             case "${OSTYPE}" in
                 darwin*)
@@ -1737,8 +1677,6 @@ function wireproxy_interface() {
 
             wireproxy_generate_config_file > "${WGQ_CONFIG_FILE}"
 
-            cat "${WGQ_CONFIG_FILE}" | raw_trace
-
             exec {WIREPROXY_FD}< <(exec "${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1)
             WIREPROXY_PID="${!}"
             ;;
@@ -1832,7 +1770,7 @@ function wireproxy_interface() {
                     ;;
             esac
 
-            raw_log_param "${line}" wireproxy "${log_level}" "${log_index}"
+            custom_log "${line}" wireproxy "${log_level}" "${log_index}"
 
             local index="${line:32:${WIREPROXY_LOG_PEER_LEN}}"
 
@@ -1907,6 +1845,8 @@ function wireproxy_interface() {
                 peer_status)
                     local peer_name="${1}" && shift
                     local status="${1}" && shift
+
+                    info "peer_status ${peer_name} ${status}"
 
                     wireproxy_peer_status["${peer_name}"]="${status}"
                     peer_state set_polled_status "${peer_name}" "${status}"
@@ -2207,8 +2147,6 @@ function stun_punch() {
 
             for _line in "${stun_buffer[@]}"
             do
-                echo "${_line}" | raw_log stunclient debug
-
                 case "${_line}" in
                     "Binding test: success")
                         ;;
@@ -2252,7 +2190,7 @@ function ntfy_pubsub() {
 
     case "${action}" in
         deps)
-            echo "curl sleep hexdump"
+            echo "curl sleep"
             ;;
         init)
             info
@@ -2290,8 +2228,6 @@ function ntfy_pubsub() {
             } | {
                 while read publish_response
                 do
-                    echo "${publish_response}" | hexdump -C | raw_trace
-
                     case "${publish_response}" in
                         "{"*"event"*"message"*)
                             ;;
@@ -2313,7 +2249,6 @@ function ntfy_pubsub() {
                     || true
             } | tail -n 1 | {
                 read poll_response || true
-                echo "${poll_response}" | hexdump -C | raw_trace
 
                 case "${poll_response}" in
                     "curl"*)
@@ -2378,8 +2313,6 @@ function ntfy_pubsub() {
                 return 1
             fi
 
-            echo "${subscribe_response}" | hexdump -C | raw_trace
-
             case "${subscribe_response}" in
                 "")
                     ;;
@@ -2423,8 +2356,6 @@ function ntfy_pubsub() {
             } | {
                 while read subscribe_response
                 do
-                    echo "${subscribe_response}" | hexdump -C | raw_trace
-
                     case "${subscribe_response}" in
                         "")
                             ;;
@@ -2558,10 +2489,8 @@ function gpg_ephemeral_encryption() {
 
                 if grep -iq "Good signature" <<<"${gpg_buffer[*]}"
                 then
-                    (IFS=''; echo -en "${gpg_buffer[*]}";) | grep -v "Checksum error" | raw_log gpg debug 5
                     return 0
                 else
-                    (IFS=''; echo -en "${gpg_buffer[*]}";) | raw_log gpg error 5
                     error "gpg 'Good signature' not found"
                     return 1
                 fi
@@ -2696,7 +2625,7 @@ function wirething() {
 
     case "${action}" in
         deps)
-            echo "mkdir cat cut hexdump jq sleep"
+            echo "mkdir cat cut jq sleep"
             ;;
         init)
             info
@@ -2937,8 +2866,6 @@ function wirething() {
             read host_endpoint < <(wirething get host_endpoint)
             read host_port < <(wirething get host_port)
 
-            echo "${host_endpoint} ${host_port}" | hexdump -C | raw_trace
-
             if [ "${host_endpoint}" != "" ]
             then
                 info "${host_endpoint} ${host_port}"
@@ -3012,7 +2939,7 @@ function wirething() {
 
                 while read line
                 do
-                    debug "${line}"
+                    trace "${line}"
 
                     wirething subscribe_encrypted_peer_endpoint_process
                 done
@@ -3150,8 +3077,6 @@ function wirething() {
 
                             debug "published_host_endpoint ${published_host_endpoint}"
 
-                            echo "${published_host_endpoint}" | hexdump -C | raw_trace
-
                             read host_endpoint < <(wirething get host_endpoint)
                             read host_port < <(wirething get host_port)
 
@@ -3184,8 +3109,6 @@ function wirething() {
                             encryption decrypt "${encrypted_peer_endpoint}"
                         } | {
                             read new_peer_endpoint
-
-                            echo "${new_peer_endpoint}" | hexdump -C | raw_trace
 
                             if [ "${new_peer_endpoint}" != "" ]
                             then
