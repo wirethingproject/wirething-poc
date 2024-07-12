@@ -1344,7 +1344,6 @@ function wg_quick_interface() {
             echo "udp"
             ;;
         deps)
-            wg_interface deps
             echo "wg-quick wg cat cut grep rm id"
             case "${OSTYPE}" in
                 darwin*)
@@ -1983,7 +1982,6 @@ function udphole_punch() {
             ;;
         deps)
             echo "nc"
-            udp deps
             ;;
         init)
             info
@@ -3247,8 +3245,6 @@ function ui() {
     esac
 }
 
-ui init
-
 # host status usecase
 
 function host_context() {
@@ -3875,55 +3871,6 @@ function peer() {
 
 # wirething main
 
-wt_type_list=(
-    interface
-    punch
-    pubsub
-    encryption
-    topic
-)
-
-wt_optional_list=(
-    wg_interface
-    wg_quick_interface
-    udphole_punch
-)
-
-wt_others_list=(
-    os
-    sys
-    log
-    udp
-    wirething
-    host
-    peer
-)
-
-function wt_get_alias() {
-    alias ${_wt_type} | cut -f 2 -d "'"
-}
-
-function wt_type_for_each() {
-    for _wt_type in "${wt_type_list[@]}"
-    do
-        "$(wt_get_alias "${_wt_type}")" "${1}"
-    done
-}
-
-function wt_optional_for_each() {
-    for _wt_optional in "${wt_optional_list[@]}"
-    do
-        "${_wt_optional}" "${1}"
-    done
-}
-
-function wt_others_for_each() {
-    for _wt_other in "${wt_others_list[@]}"
-    do
-        "${_wt_other}" "${1}"
-    done
-}
-
 function wirething_main() {
     local action="${1}" && shift
 
@@ -3934,9 +3881,38 @@ function wirething_main() {
             {
                 echo "mkdir rm sed sort uniq wc"
 
-                wt_type_for_each deps
-                wt_others_for_each deps
-                wt_optional_for_each deps
+                os deps
+                sys deps
+                log deps
+
+                udp deps
+                # event deps
+                tasks deps
+
+                config deps
+
+                wireproxy_interface deps
+                ntfy_pubsub deps
+                gpg_ephemeral_encryption deps
+                totp_topic deps
+
+                wirething deps
+                host deps
+                peer deps
+
+                # Optional
+
+                os optional
+
+                wg_interface deps
+                wg_quick_interface deps
+                # wg_quick_interface: wg_interface
+
+                udphole_punch deps
+                # udphole_punch: udp
+
+                # stun_punch deps # TODO: optional
+
             } | sed "s, ,\n,g" | sort | uniq | {
                 while read dep
                 do
@@ -3990,8 +3966,16 @@ function wirething_main() {
             event init
             tasks init
 
-            wt_type_for_each init
-            wt_others_for_each init
+            interface init
+            punch init
+            pubsub init
+            encryption init
+            topic init
+
+            wirething init
+            ui init
+            host init
+            peer init
             ;;
         up)
             info
@@ -4003,9 +3987,13 @@ function wirething_main() {
             config up
             event up
 
-            wt_type_for_each up
-            wt_others_for_each up
+            interface up
+            # punch up
+            # pubsub up
+            encryption up
+            # topic up
 
+            wirething up
             wirething up_host
 
             for _peer_name in ${config["peer_name_list"]}
@@ -4022,10 +4010,15 @@ function wirething_main() {
             peer stop
             host stop
 
-            wt_type_for_each down || true
-            wt_others_for_each down || true
+            wirething down || true
 
-            event down
+            # topic down || true
+            encryption down || true
+            # pubsub down || true
+            # punch down || true
+            interface down || true
+
+            event down || true
 
             if [[ ! -v WT_EPHEMERAL_PATH ]]
             then
