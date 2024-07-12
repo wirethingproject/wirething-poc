@@ -214,6 +214,7 @@ function sys() {
             ;;
         stop_sleep)
             kill -CONT "${sleep_input_pid}" || true
+            exec {sleep_input}>&-
             ;;
         sleep)
             if { read -t "${1}" -u "${sleep_input}" || test "${?}" -le 128; }
