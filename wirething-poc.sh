@@ -1681,7 +1681,14 @@ function wireproxy_interface() {
             WIREPROXY_PID="${!}"
             ;;
         stop)
-            rm -f "${WIREPROXY_READY_FILE}"
+            info
+
+            if rm -f "${WIREPROXY_READY_FILE}"
+            then
+                info "'${WIREPROXY_READY_FILE}' was successfully deleted"
+            else
+                error "'${WIREPROXY_READY_FILE}' delete error"
+            fi
 
             if [[ ! -v WIREPROXY_PID ]]
             then
@@ -1712,7 +1719,13 @@ function wireproxy_interface() {
             do
                 if [[ -f "${WIREPROXY_RELOAD_FILE}" && -f "${WIREPROXY_READY_FILE}" ]]
                 then
-                    rm -f "${WIREPROXY_RELOAD_FILE}"
+                    if rm -f "${WIREPROXY_RELOAD_FILE}"
+                    then
+                        info "'${WIREPROXY_RELOAD_FILE}' was successfully deleted"
+                    else
+                        error "'${WIREPROXY_RELOAD_FILE}' delete error"
+                    fi
+
                     wireproxy_interface stop
                     wireproxy_interface start
                 fi
