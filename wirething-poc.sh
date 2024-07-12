@@ -3190,27 +3190,6 @@ function ui() {
 
                 info "${title}, ${text}"
 
-                case "${previous_status}" in
-                    offline)
-                        if [[ "${previous_status_time}" -lt "$((60 * 20))" ]] # 20 minutes
-                        then
-                            return 0
-                        fi
-                        ;;
-                    online)
-                        if [[ "${previous_status_time}" -lt "$((60 * 5))" ]] # 5 minutes
-                        then
-                            return 0
-                        fi
-                        ;;
-                    *)
-                        if [[ "${previous_status_time}" -lt "$((60 * 1))" ]] # 1 minute
-                        then
-                            return 0
-                        fi
-                        ;;
-                esac
-
                 os_ui log "${title}" "${text}"
             fi
             ;;
@@ -3679,10 +3658,14 @@ function peer_state() {
             local new_status="${_peer_status_transitions["${transition}"]}"
 
             case "${new_status}" in
-                start|wait|offline|online|stop)
+                offline|online|stop)
                     ui before_status_changed "${peer_name}" "${new_status}" "${current_status}" \
                         "${_peer_state["current_status_timestamp_${peer_name}"]}"
+                    ;;
+            esac
 
+            case "${new_status}" in
+                start|wait|offline|online|stop)
                     peer_state set_current_status "${peer_name}" "${new_status}"
 
                     ui after_status_changed
