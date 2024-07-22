@@ -1791,9 +1791,9 @@ function wireproxy_interface() {
             else
                 if sys terminate_from_parent_pid "${WIREPROXY_PPID}"
                 then
-                    info "'wireproxy' pid=${WIREPROXY_PPID} was successfully stopped"
+                    info "'wireproxy' ppid=${WIREPROXY_PPID} was successfully stopped"
                 else
-                    info "'wireproxy' pid=${WIREPROXY_PPID} was not running"
+                    info "'wireproxy' ppid=${WIREPROXY_PPID} was not running"
                 fi
             fi
 
@@ -4140,6 +4140,9 @@ function wirething_main() {
             else
                 error "'${WT_EPHEMERAL_PATH}' delete error"
             fi
+
+            wait
+            info "exiting..."
             ;;
         loop)
             info "start"
