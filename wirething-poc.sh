@@ -3538,17 +3538,6 @@ function host_task() {
                 fi
             fi
 
-            if [ "${status}" == "online" ]
-            then
-                for _peer_name in ${config["peer_name_list"]}
-                do
-                    if ! wirething ensure_host_endpoint_is_published "${_peer_name}"
-                    then
-                        status="offline"
-                    fi
-                done
-            fi
-
             host_context unset
             ;;
         register)
@@ -3586,7 +3575,7 @@ function host() {
             info
             WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-20}" # 20 seconds
             WT_HOST_OFFLINE_PULL_STATUS_INTERVAL="${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL:-30}" # 30 seconds
-            WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-60}" # 1 minute
+            WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-600}" # 10 minute
 
             host_context init
             host_state init
