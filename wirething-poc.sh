@@ -3403,11 +3403,6 @@ function host_state() {
         stop_host)
             info
 
-            if [[ ! -v _host_state ]]
-            then
-                return 0
-            fi
-
             if [[ ! -v _host_state["current_status"] ]]
             then
                 return 0
@@ -3883,7 +3878,7 @@ function peer() {
         stop)
             info
 
-            if [[ ! -v config ]]
+            if [[ ! -v config["peer_name_list"] ]]
             then
                 return 0
             fi
