@@ -1304,7 +1304,38 @@ function wg_interface() {
 
 # wg quick interface
 
+function wg_quick_update_location() {
+    local action=""
+    debug
+
+    for _peer_name in ${config["peer_name_list"]}
+    do
+        local local_port="0" local_ip=""
+
+        if [ -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}_local_port" ]
+        then
+            local_port="$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}_local_port" 2>&${WT_LOG_DEBUG})"
+        fi
+
+        if [ "${config["peer_wg_quick_local_ips_${_peer_name}"]}" != "" ]
+        then
+            local_ip="${config["peer_wg_quick_local_ips_${_peer_name}"]}"
+        fi
+
+        wg_quick_location["${_peer_name}"]="remote"
+
+        if [[ "${local_port}" != "0" && "${local_ip}" != "" ]]
+        then
+            if os_ping_quick "${local_ip}" >&${null}
+            then
+                wg_quick_location["${_peer_name}"]="local"
+            fi
+        fi
+    done
+}
+
 function wg_quick_generate_config_file() {
+    local action=""
     debug
 
     cat <<EOF
@@ -1351,30 +1382,20 @@ EOF
 
         local endpoint="" local_port="0" local_ip=""
 
-        if [ -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}_local_port" ]
+        if [[ "${wg_quick_location["${_peer_name}"]}" == "local" ]]
         then
             local_port="$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}_local_port" 2>&${WT_LOG_DEBUG})"
-        fi
-
-        if [ "${config["peer_wg_quick_local_ips_${_peer_name}"]}" != "" ]
-        then
             local_ip="${config["peer_wg_quick_local_ips_${_peer_name}"]}"
-        fi
-
-        if [[ "${local_port}" != "0" && "${local_ip}" != "" ]]
-        then
-            if ping_quick "${local_ip}" >&${null}
-            then
-                endpoint="${local_ip}:${local_port}"
-                wg_quick_interface set location "${_peer_name}" "local"
-            else
-                wg_quick_interface set location "${_peer_name}" "remote"
-            fi
+            endpoint="${local_ip}:${local_port}"
         fi
 
         if [[ "${endpoint}" == "" && -f "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" ]]
         then
             endpoint=$(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 1 -d " ")
+        else
+        cat <<EOF
+# Endpoint = $(cat "${WT_PEER_ENDPOINT_PATH}/${_peer_name}" 2>&${WT_LOG_DEBUG} | cut -f 1 -d " ")
+EOF
         fi
 
         if [ "${endpoint}" != "" ]
@@ -1424,6 +1445,11 @@ function wg_quick_interface() {
             info "WGQ_INTERFACE=${WGQ_INTERFACE}"
 
             declare -g -A wg_quick_location
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                wg_quick_location["${_peer_name}"]="remote"
+            done
             ;;
         up)
             info
@@ -1433,7 +1459,8 @@ function wg_quick_interface() {
                 die "wg-quick must be run as root: user id $(id -u) != 0"
             fi
 
-            wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+            wg_quick_update_location
+            wg_quick_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
 
             export WG_QUICK_USERSPACE_IMPLEMENTATION="${WGQ_USERSPACE}"
             export LOG_LEVEL="${WGQ_LOG_LEVEL}"
@@ -1480,9 +1507,15 @@ function wg_quick_interface() {
         reload)
             info
 
-            wg_quick_generate_config_file > "${WGQ_CONFIG_FILE}"
+            wg_quick_update_location
+            wg_quick_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
             wg syncconf "${WG_INTERFACE}" <(wg-quick strip "${WGQ_CONFIG_FILE}")
             wg set "${WG_INTERFACE}" private-key "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}"
+            ;;
+        on_location)
+            local peer_name="${1}" && shift
+
+            event fire location "${peer_name} ${wg_quick_location["${_peer_name}"]}"
             ;;
         event)
             local event="${1}" && shift
@@ -1500,12 +1533,6 @@ function wg_quick_interface() {
             local name="${1}" && shift
 
             case "${name}" in
-                location)
-                    local peer_name="${1}" && shift
-                    local location="${1}" && shift
-
-                    event fire location "${peer_name} ${location}"
-                    ;;
                 host_port)
                     local port="${1}" && shift
                     info "host_port ${port:-''}"
@@ -1530,7 +1557,10 @@ function wg_quick_interface() {
                     local local_port="${1}" && shift
                     info "peer_endpoint ${peer_name} ${local_port}"
 
-                    if ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
+                    endpoint="${config["peer_wg_quick_local_ips_${peer_name}"]}:${local_port}"
+
+                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}" &&
+                        os_ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
                     then
                         wg_quick_interface reload
                     fi
@@ -1562,6 +1592,16 @@ function wg_quick_interface() {
 }
 
 # wireproxy interface
+
+function wireproxy_notify_location() {
+    local action=""
+    debug
+
+    for _peer_name in ${config["peer_name_list"]}
+    do
+        wg_quick_interface on_location "${_peer_name}"
+    done
+}
 
 function wireproxy_generate_config_file() {
     local action=""
@@ -1681,6 +1721,9 @@ function wireproxy_interface() {
         up)
             info
 
+            wg_quick_update_location
+            wireproxy_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
+
             local wg_pub="${config["host_wg_pub"]}"
             local index="${wg_pub::4}…${wg_pub:(-5):4}"
             wireproxy_name_table["${index}"]="${config["host_name"]}"
@@ -1724,10 +1767,13 @@ function wireproxy_interface() {
                 wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
             fi
 
-            wireproxy_generate_config_file > "${WGQ_CONFIG_FILE}"
+            wg_quick_update_location
+            wireproxy_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
 
-            exec {WIREPROXY_FD}< <(exec "${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1)
-            WIREPROXY_PID="${!}"
+            exec {WIREPROXY_FD}< <(exec "${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1 | log file "wireproxy" || info "wireproxy exit status ${?}")
+            WIREPROXY_PPID="${!}"
+
+            wireproxy_notify_location
             ;;
         stop)
             info
@@ -1739,27 +1785,28 @@ function wireproxy_interface() {
                 error "'${WIREPROXY_READY_FILE}' delete error"
             fi
 
-            if [[ ! -v WIREPROXY_PID ]]
+            if [[ ! -v WIREPROXY_PPID ]]
             then
                 info "'wireproxy' was not running"
             else
-                if kill -TERM "${WIREPROXY_PID}" 2>&${null}
+                if sys terminate_from_parent_pid "${WIREPROXY_PPID}"
                 then
-                    info "'wireproxy' pid=${WIREPROXY_PID} was successfully stopped"
+                    info "'wireproxy' pid=${WIREPROXY_PPID} was successfully stopped"
                 else
-                    info "'wireproxy' pid=${WIREPROXY_PID} was not running"
+                    info "'wireproxy' pid=${WIREPROXY_PPID} was not running"
                 fi
-
             fi
 
             while wireproxy_interface process_log
             do
                 :
             done
+
+            exec {WIREPROXY_FD}>&- || true
+
+            unset -v WIREPROXY_FD
             ;;
         run)
-            info "up"
-
             trap "wireproxy_interface stop" "EXIT"
 
             wireproxy_interface start
@@ -1900,6 +1947,10 @@ function wireproxy_interface() {
                     ;;
             esac
             ;;
+        reload)
+            info
+            touch "${WIREPROXY_RELOAD_FILE}"
+            ;;
         event)
             local event="${1}" && shift
 
@@ -1938,7 +1989,7 @@ function wireproxy_interface() {
 
                     if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
                     then
-                        touch "${WIREPROXY_RELOAD_FILE}"
+                        wireproxy_interface reload
                     fi
                     ;;
                 peer_endpoint)
@@ -1948,7 +1999,7 @@ function wireproxy_interface() {
 
                     if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
                     then
-                        touch "${WIREPROXY_RELOAD_FILE}"
+                        wireproxy_interface reload
                     fi
                     ;;
                 peer_local_port)
@@ -1956,9 +2007,12 @@ function wireproxy_interface() {
                     local local_port="${1}" && shift
                     info "peer_endpoint ${peer_name} ${local_port}"
 
-                    if ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
+                    endpoint="${config["peer_wg_quick_local_ips_${peer_name}"]}:${local_port}"
+
+                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}" &&
+                        os_ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
                     then
-                        touch "${WIREPROXY_RELOAD_FILE}"
+                        wireproxy_interface reload
                     fi
                     ;;
             esac
@@ -2533,7 +2587,7 @@ function gpg_ephemeral_encryption() {
             {
                 echo "${data}"
             } | {
-                base64 -d
+                os_base64 -d
             } | {
                 capture start
 
