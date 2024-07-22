@@ -59,12 +59,7 @@ function os() {
 
     case "${action}" in
         deps)
-            echo "ping"
-            case "${OSTYPE}" in
-                linux*)
-                    echo "base64"
-                    ;;
-            esac
+            echo "base64 ping pkill"
             ;;
         optional)
             case "${OSTYPE}" in
@@ -87,8 +82,9 @@ function os() {
 
             case "${OSTYPE}" in
                 darwin*)
-                    alias ping="ping -c 1 -t 5"
-                    alias ping_quick="ping -c 1 -t 1"
+                    alias os_ping="ping -c 1 -t 5"
+                    alias os_ping_quick="ping -c 1 -t 1"
+                    alias os_base64='base64'
 
                     if type -a osascript >&${null} 2>&${null}
                     then
@@ -98,9 +94,9 @@ function os() {
                     fi
                     ;;
                 linux*)
-                    alias ping="ping -c 1 -W 5"
-                    alias ping_quick="ping -c 1 -W 1"
-                    alias base64='os linux base64'
+                    alias os_ping="ping -c 1 -W 5"
+                    alias os_ping_quick="ping -c 1 -W 1"
+                    alias os_base64='os linux base64'
 
                     case "${OSTYPE}" in
                         linux-android)
@@ -203,7 +199,7 @@ function sys() {
 
     case "${action}" in
         deps)
-            echo "id"
+            echo "cat id mktemp mv pkill"
             ;;
         init)
             sys start_sleep
@@ -223,6 +219,24 @@ function sys() {
             else
                 return 0
             fi
+            ;;
+        buffer_to_file)
+            local file="${1}"
+            buffer="$(mktemp -p "${_sys_tmp_path}")"
+            cat -u > "${buffer}"
+            mv -f "${buffer}" "${file}"
+            ;;
+        terminate)
+            local pid="${1}"
+            kill -TERM "${pid}" 2>&${null}
+            ;;
+        terminate_from_group)
+            local gpid="${1}"
+            pkill -TERM -g "${gpid}" 2>&${null}
+            ;;
+        terminate_from_parent_pid)
+            local ppid="${1}"
+            pkill -TERM -P "${ppid}" 2>&${null}
             ;;
         is_running)
             if [ "${_sys_running}" == "true" ]
@@ -246,6 +260,12 @@ function sys() {
         set_error_path)
             _sys_error_path="${1}"
             ;;
+        set_log_path)
+            _sys_log_path="${1}"
+            ;;
+        set_tmp_path)
+            _sys_tmp_path="${1}"
+            ;;
         set_on_exit)
             _sys_on_exit="${@}"
             ;;
@@ -253,6 +273,16 @@ function sys() {
             if [[ ! -v _sys_error_path ]]
             then
                 os die "'sys set_error_path' was not called"
+            fi
+
+            if [[ ! -v _sys_log_path ]]
+            then
+                os die "'log set_log_path' was not called"
+            fi
+
+            if [[ ! -v _sys_tmp_path ]]
+            then
+                os die "'sys set_tmp_path' was not called"
             fi
 
             if [[ ! -v _sys_on_exit ]]
@@ -348,7 +378,7 @@ function log() {
 
     case "${log_action}" in
         deps)
-            :
+            echo "timeout tee"
             ;;
         init)
             WT_LOG_LEVEL="${WT_LOG_LEVEL:-info}"
@@ -436,6 +466,25 @@ function log() {
             local level_name="${level/info/info }"
 
             sys_log "${level_name^^} [${app}] ${line:${start_index}}" >&${_fd_from_level[${level}]} || true
+            ;;
+        file)
+            local name="${1}" && shift
+            local period="86400" # 1 day
+
+            set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
+            while true
+            do
+                log_timeout="$(( ((${EPOCHSECONDS} / ${period} + 1) * ${period}) - ${EPOCHSECONDS} + 5 ))"
+                log_date="$(date -u -I)"
+                log_file="${_sys_log_path}/${name}-${log_date}.log"
+
+                timeout "${log_timeout}s" tee -a "${log_file}"
+                if [[ ${?} -ne 124 ]]
+                then
+                    break
+                fi
+            done
             ;;
     esac
 }
@@ -1122,7 +1171,7 @@ function wg_interface() {
             echo "udp"
             ;;
         deps)
-            echo "wg grep cut sed sort tail ping id"
+            echo "wg grep cut sed sort tail id"
             ;;
         init)
             info
@@ -1200,7 +1249,7 @@ function wg_interface() {
 
                     local result="offline"
 
-                    if ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_TRACE} 1>&${WT_LOG_TRACE}
+                    if os_ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_TRACE} 1>&${WT_LOG_TRACE}
                     then
                         result="online"
                     fi
@@ -1655,7 +1704,7 @@ function wireproxy_interface() {
             then
                 info "'wireproxy_bg' was not running"
             else
-                if kill -TERM "${WIREPROXY_BG_PID}" 2>&${null}
+                if sys terminate "${WIREPROXY_BG_PID}"
                 then
                     info "'wireproxy_bg' pid=${WIREPROXY_BG_PID} was successfully stopped"
                 else
@@ -2297,7 +2346,7 @@ function ntfy_pubsub() {
             then
                 info "'ntfy' was not running"
             else
-                if kill -TERM "${NTFY_SUBSCRIBE_PID}" 2>&${null}
+                if sys terminate "${NTFY_SUBSCRIBE_PID}"
                 then
                     info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was successfully stopped"
                 else
@@ -2398,7 +2447,7 @@ function gpg_ephemeral_encryption() {
 
     case "${action}" in
         deps)
-            echo "gpg mkdir grep cut sed gpgconf rm base64"
+            echo "gpg mkdir grep cut sed gpgconf rm"
             ;;
         init)
             info
@@ -2474,7 +2523,7 @@ function gpg_ephemeral_encryption() {
                 gpg --encrypt ${GPG_OPTIONS} ${host_recipient} ${peer_recipient} --sign --armor \
                         2>&${WT_LOG_DEBUG}
             } | {
-                base64
+                os_base64
             }
             ;;
         decrypt)
@@ -2563,12 +2612,12 @@ function totp_secret() {
     {
         case "${action}" in
             publish)
-                base64 -d <<<"${config["host_totp_id"]}"
-                base64 -d <<<"${config["peer_totp_id_${peer_name}"]}"
+                os_base64 -d <<<"${config["host_totp_id"]}"
+                os_base64 -d <<<"${config["peer_totp_id_${peer_name}"]}"
                 ;;
             subscribe)
-                base64 -d <<<"${config["peer_totp_id_${peer_name}"]}"
-                base64 -d <<<"${config["host_totp_id"]}"
+                os_base64 -d <<<"${config["peer_totp_id_${peer_name}"]}"
+                os_base64 -d <<<"${config["host_totp_id"]}"
                 ;;
             *)
                 die "invalid action *${1}*, options: publish, subscribe"
@@ -2590,7 +2639,7 @@ function totp_topic() {
 
     case "${action}" in
         deps)
-            echo "cat base64 openssl sed python3"
+            echo "cat openssl sed python3"
             ;;
         init)
             info
@@ -2682,7 +2731,7 @@ function wirething() {
             then
                 info "'wirething_subscribe_bg' was not running"
             else
-                if kill -TERM "${WIRETHING_SUBSCRIBE_BG_PID}" 2>&${null}
+                if sys terminate "${WIRETHING_SUBSCRIBE_BG_PID}"
                 then
                     info "'wirething_subscribe_bg' pid=${WIRETHING_SUBSCRIBE_BG_PID} was successfully stopped"
                 else
@@ -3939,6 +3988,7 @@ function wirething_main() {
             WT_CONFIG_PATH="${WT_CONFIG_PATH:-${PWD}}"
             WT_STATE_PATH="${WT_CONFIG_PATH}/state"
             WT_ERROR_PATH="${WT_CONFIG_PATH}/error"
+            WT_LOG_PATH="${WT_CONFIG_PATH}/log"
 
             if sys is_root
             then
@@ -3951,11 +4001,15 @@ function wirething_main() {
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
             WT_PAUSE_AFTER_CONNECTION_LOST="${WT_PAUSE_AFTER_CONNECTION_LOST:-10}" # 10 seconds
 
+            WT_TMP_PATH="${WT_EPHEMERAL_PATH}/tmp"
+
             info "WT_PID=${WT_PID}"
 
             wirething_main deps check
 
             sys set_error_path "${WT_ERROR_PATH}"
+            sys set_log_path "${WT_LOG_PATH}"
+            sys set_tmp_path "${WT_TMP_PATH}"
             sys set_on_exit "wirething_main down"
             sys start
 
@@ -3979,12 +4033,15 @@ function wirething_main() {
 
             mkdir -p "${WT_STATE_PATH}"
             mkdir -p "${WT_ERROR_PATH}"
+            mkdir -p "${WT_LOG_PATH}"
+            mkdir -p "${WT_TMP_PATH}"
             mkdir -p "${WT_EPHEMERAL_PATH}"
 
             config up
             event up
 
             interface up
+
             # punch up
             # pubsub up
             encryption up
