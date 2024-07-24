@@ -202,6 +202,7 @@ function sys() {
             echo "cat id mktemp mv pkill"
             ;;
         init)
+            SYS_PID="${BASHPID}"
             sys start_sleep
             ;;
         start_sleep)
@@ -225,6 +226,9 @@ function sys() {
             buffer="$(mktemp -p "${_sys_tmp_path}")"
             cat -u > "${buffer}"
             mv -f "${buffer}" "${file}"
+            ;;
+        shutdown)
+            sys terminate_from_group "${SYS_PID}"
             ;;
         terminate)
             local pid="${1}"
