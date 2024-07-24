@@ -1771,13 +1771,51 @@ function wireproxy_interface() {
                 wireproxy_params="-i ${WIREPROXY_HEALTH_BIND}"
             fi
 
+            local host_port="0"
+            local host_endpoint=""
+
+            if [ -f "${WT_HOST_PORT_FILE}" ]
+            then
+                host_port="$(cat "${WT_HOST_PORT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
+            fi
+
+            if [ -f "${WT_HOST_ENDPOINT_FILE}" ]
+            then
+                host_endpoint="$(cat "${WT_HOST_ENDPOINT_FILE}" 2>&${WT_LOG_DEBUG} || echo)"
+            fi
+
             wg_quick_update_location
             wireproxy_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
 
-            exec {WIREPROXY_FD}< <(exec "${WIREPROXY_COMMAND}" ${wireproxy_params} -c <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1 | log file "wireproxy" || info "wireproxy exit status ${?}")
+            exec {WIREPROXY_FD}< <({
+                set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+                "${WIREPROXY_COMMAND}" ${wireproxy_params} -c \
+                    <(WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file) 2>&1 \
+                        | log file "wireproxy"
+                wireproxy_interface _status "${?}" "${host_port}" "${host_endpoint}"
+            })
             WIREPROXY_PPID="${!}"
 
             wireproxy_notify_location
+            ;;
+        _status)
+            local exit_status="${1}" && shift
+            local host_port="${1}" && shift
+            local host_endpoint="${1}" && shift
+
+            action="wireproxy" info "exit status: ${exit_status}"
+
+            if [[ "${exit_status}" != "0" ]]
+            then
+                if [[ "${host_port}" != "0" && "${host_port}" != "" && "${host_endpoint}" != "" ]] &&
+                    "${WT_PUNCH_TYPE}_punch" status "${host_port}" "${host_endpoint}"
+                then
+                    info "success"
+                else
+                    info "failed"
+                    event fire punch
+                fi
+            fi
             ;;
         stop)
             info
