@@ -259,7 +259,7 @@ function sys() {
             fi
             ;;
         trap)
-            trap "sys signal \"${1}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\" \"${?:-null}\"" "${1}"
+            trap "sys signal \"${1}\" \"\${LINENO:-}\" \"\${FUNCNAME[0]:-}\" \"\${?:-null}\"" "${1}"
             ;;
         set_error_path)
             _sys_error_path="${1}"
