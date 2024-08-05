@@ -481,9 +481,11 @@ function log() {
 
             while true
             do
-                log_timeout="$(( ((${EPOCHSECONDS} / ${period} + 1) * ${period}) - ${EPOCHSECONDS} + 5 ))"
                 log_date="$(date -u -I)"
                 log_file="${_sys_log_path}/${name}-${log_date}.log"
+
+                log_now="${EPOCHSECONDS}"
+                log_timeout="$(( ((${log_now} / ${period} + 1) * ${period}) - ${log_now} + 10 ))"
 
                 timeout "${log_timeout}s" tee -a "${log_file}"
                 if [[ ${?} -ne 124 ]]
