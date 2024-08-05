@@ -3051,7 +3051,13 @@ function wirething() {
 
                 while read line
                 do
-                    trace "${line}"
+                    case "${line}" in
+                        *'"event":"keepalive"'*)
+                            :
+                            ;;
+                        *)
+                            trace "${line}"
+                    esac
 
                     wirething subscribe_encrypted_peer_endpoint_process
                 done
