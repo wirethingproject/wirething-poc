@@ -467,7 +467,7 @@ function log() {
             local line="${1}" && shift
             local app="${1}" && shift
             local level="${1}" && shift
-            local start_index="${1:-0}" && shift
+            local start_index="${1:-0}"
 
             local level_name="${level/info/info }"
 
@@ -2285,7 +2285,7 @@ function stun_punch() {
             ;;
         open)
             debug "${STUN_HOSTNAME}" "${STUN_PORT}"
-            local host_port="${1:-}" && shift
+            local host_port="${1:-}"
 
             if [ "${host_port}" == "" ]
             then
@@ -2399,7 +2399,7 @@ function ntfy_pubsub() {
         poll)
             local topic="${1}" && shift
             local since="${1}" && shift
-            local format="${1:-raw}" && shift
+            local format="${1:-raw}"
 
             debug "curl ${NTFY_CURL_OPTIONS} --max-time \"${NTFY_POLL_TIMEOUT}\" --stderr - \"${NTFY_URL}/${topic}/${format}?poll=1&since=${since}\""
             {
@@ -2430,7 +2430,7 @@ function ntfy_pubsub() {
         subscribe_start)
             local topic="${1}" && shift
             local since="${1}" && shift
-            local format="${1:-json}" && shift
+            local format="${1:-json}"
 
             debug "${topic}"
 
@@ -2502,7 +2502,7 @@ function ntfy_pubsub() {
         subscribe)
             local topic="${1}" && shift
             local since="${1}" && shift
-            local format="${1:-json}" && shift
+            local format="${1:-json}"
 
             debug "${topic} starting"
 
@@ -2939,7 +2939,7 @@ function wirething() {
                 peer_endpoint)
                     local peer_name="${1}" && shift
                     local endpoint="${1}" && shift
-                    local timestamp="${1:-${EPOCHSECONDS}}" && shift
+                    local timestamp="${1:-${EPOCHSECONDS}}"
 
                     info "peer_endpoint ${peer_name} ${endpoint}"
                     echo "${endpoint} ${timestamp}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}"
@@ -4232,7 +4232,7 @@ function cli() {
         export)
             local domain="${1:?Missing domain param}" && shift
             local hostname="${1:?Missing hostname param}" && shift
-            local host_peer_file="${1:-${PWD}/${hostname}.peer}" && shift || true
+            local host_peer_file="${1:-${PWD}/${hostname}.peer}"
 
             store export "${domain}" "${hostname}" "${host_peer_file}"
             ;;
