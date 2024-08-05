@@ -206,17 +206,17 @@ function sys() {
             sys start_sleep
             ;;
         start_sleep)
-            exec {sleep_input}< <(echo "${BASHPID}" && kill -STOP "${BASHPID}")
-            read -u "${sleep_input}" sleep_input_pid
+            exec {sleep_input_fd}< <(echo "${BASHPID}" && kill -STOP "${BASHPID}")
+            read -u "${sleep_input_fd}" sleep_input_pid
             ;;
         stop_sleep)
             kill -CONT "${sleep_input_pid}" || true
-            exec {sleep_input}>&-
-            unset -v sleep_input
+            exec {sleep_input_fd}>&-
+            unset -v sleep_input_fd
             unset -v sleep_input_pid
             ;;
         sleep)
-            if { read -t "${1}" -u "${sleep_input}" || test "${?}" -le 128; }
+            if { read -t "${1}" -u "${sleep_input_fd}" || test "${?}" -le 128; }
             then
                 return 1
             else
