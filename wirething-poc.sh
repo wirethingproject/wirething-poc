@@ -3387,6 +3387,8 @@ function host_state() {
             declare -g -A _host_event_transitions=(
                 ["host_empty_start"]="on_host_start"
                 ["host_start_wait"]=""
+                ["host_start_offline"]="on_host_offline"
+                ["host_start_online"]=""
                 ["host_wait_offline"]="on_host_offline"
                 ["host_wait_online"]=""
                 ["host_online_offline"]="on_host_offline"
@@ -3399,6 +3401,8 @@ function host_state() {
             declare -g -A _host_status_transitions=(
                 ["host_empty_start"]="start"
                 ["host_start_wait"]="wait"
+                ["host_start_offline"]="offline"
+                ["host_start_online"]="online"
                 ["host_wait_offline"]="offline"
                 ["host_wait_online"]="online"
                 ["host_online_offline"]="offline"
