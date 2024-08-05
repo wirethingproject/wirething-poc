@@ -1645,6 +1645,451 @@ function wireproxy_compat() {
     fi
 }
 
+function wg_quick_config() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            :
+            ;;
+        init)
+            info
+            ;;
+        generate)
+            info
+
+            WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wg_quick_generate_config_file
+            ;;
+    esac
+}
+
+function wireproxy_config() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            wg_quick_config deps
+            ;;
+        init)
+            info
+
+            WIREPROXY_HTTP_BIND="${WIREPROXY_HTTP_BIND:-disabled}" # 127.0.0.1:3128
+            WIREPROXY_SOCKS5_BIND="${WIREPROXY_SOCKS5_BIND:-127.0.0.1:1080}"
+            WIREPROXY_HEALTH_BIND="${WIREPROXY_HEALTH_BIND:-127.0.0.1:9080}"
+            WIREPROXY_EXPOSE_PORT_LIST="${WIREPROXY_EXPOSE_PORT_LIST:-}"
+            WIREPROXY_FORWARD_PORT_LIST="${WIREPROXY_FORWARD_PORT_LIST:-}"
+
+            if ! wireproxy_compat 1 0 9
+            then
+                WIREPROXY_HEALTH_BIND="disabled"
+                error "health bind disabled, wireproxy not compatible with version 1.0.9"
+            fi
+
+            wg_quick_config init
+            ;;
+        generate)
+            info
+
+            # wg_quick_config generate
+            # wireproxy_generate_config_file
+
+            wireproxy_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
+            WGQ_USE_POSTUP_TO_SET_PRIVATE_KEY=false wireproxy_generate_config_file
+            ;;
+    esac
+}
+
+function wireguard_log() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            echo "sed"
+            ;;
+        init)
+            info
+
+            # TODO handle network errors
+
+            wireguard_log_parser=(
+                -E
+                # Compress Information
+                -e
+                "s,^DEBUG: [0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} ,D,"
+                -e
+                "s,^ERROR: [0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} ,E,"
+                -e
+                "s,^(.)peer.(....)…(....).,\1P\2\3,"
+                # Peer Online
+                -e
+                "s,^DP(........) - (Receiving keepalive packet$),P\1U,"
+                -e
+                "s,^DP(........) - (Received handshake response$),P\1U,"
+                -e
+                "s,^DP(........) - (Received handshake initiation.*$),P\1U,"
+                # Peer Offline
+                -e
+                "s,^DP(........) - (Handshake did not complete after 5 seconds. retrying .try 4.$),P\1D,"
+                -e
+                "s,^EP(........) - (Failed to send data packets.*),P\1D,"
+                # Interface Ready
+                -e
+                "s,^D(Interface state was Down. requested Up. now Up),R,"
+                # Delete
+                -e
+                "/^DP........ - Sending|^DP........ - Handshake|^DP........ - Removing|^DP........ - Retrying/d"
+                -e
+                "/^EP........ - Failed to send handshake/d"
+                -e
+                "/^DP........ - Routine|^DP........ - UAPI|^DP........ - Starting/d"
+                -e
+                "/^DRoutine|^DUAPI|^DInterface|^DUDP/d"
+            )
+            ;;
+        parse)
+            info
+
+            exec sed -u "${wireguard_log_parser[@]}"
+            ;;
+    esac
+}
+
+function wireproxy_log() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            wireguard_log deps
+            echo "sed"
+            ;;
+        init)
+            info
+
+            wireguard_log init
+
+            # TODO handle bind errors
+            # EIPC error -48: failed to set listen_port: listen udp4 :55554: bind: address already in use
+            # WIPC error -48: failed to set listen_port: listen udp4 :55554: bind: address already in use
+            # Wlisten tcp failed: listen tcp 127.0.0.1:3128: bind: address already in use
+            # Wlisten tcp 127.0.0.1:22000: bind: address already in use
+
+
+            wireproxy_log_parser=(
+                -E
+                -e
+                "s,^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} ,W,"
+            )
+            ;;
+        parse)
+            info
+
+            exec sed -u "${wireproxy_log_parser[@]}" \
+                | wireguard_log parse
+            ;;
+    esac
+}
+
+function wireproxy_service() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        deps)
+            wireproxy_config deps
+            wireproxy_log deps
+            ;;
+        init)
+            info
+
+            WIREPROXY_BIN="${WIREPROXY_COMMAND:-wireproxy}" # TODO rename WIREPROXY_COMMAND to WIREPROXY_BIN
+
+            if [ ! -f "${WIREPROXY_BIN}" ]
+            then
+                die "command in WIREPROXY_BIN not found *${WIREPROXY_BIN}*"
+            fi
+
+            wireproxy_config init
+            wireproxy_log init
+
+            wireproxy_service_status="down"
+            ;;
+        init_run)
+            info
+
+            trap "" ERR
+            set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
+            declare -g -A wireproxy_status_table=(
+                ["U"]="online"
+                ["D"]="offline"
+            )
+
+            declare -g -A wireproxy_name_table
+
+            local wg_pub="${config["host_wg_pub"]}"
+            local peer="${wg_pub::4}${wg_pub:(-5):4}"
+
+            wireproxy_name_table["${peer}"]="${config["host_name"]}"
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                wg_pub="${config["peer_wg_pub_${_peer_name}"]}"
+                peer="${wg_pub::4}${wg_pub:(-5):4}"
+
+                wireproxy_name_table["${peer}"]="${_peer_name}"
+            done
+
+            declare -g -A wireproxy_peer_status
+
+            for _peer_name in ${config["peer_name_list"]}
+            do
+                wireproxy_peer_status["${_peer_name}"]="D"
+            done
+
+            wireproxy_online_count=0
+            wireproxy_online_max="${#wireproxy_peer_status[@]}"
+
+            wireproxy_exec=(
+                "${WIREPROXY_BIN}"
+            )
+            ;;
+        exec)
+            info
+
+            exec "${wireproxy_exec[@]}" -c <(wireproxy_config generate) 2>&1
+            ;;
+        main)
+            info
+
+            while read -r -N 1 event
+            do
+                case "${event}" in
+                    R)
+                        event on_status_change interface "running"
+                        event fire ready
+                        ;;
+                    P)
+                        read -r -N 8 peer
+                        read -r -N 1 event_status
+
+                        local peer_name="${wireproxy_name_table["${peer}"]}"
+                        local transition="${wireproxy_peer_status["${peer_name}"]}->${event_status}"
+
+                        case "${transition}" in
+                            "D->U"|"U->D")
+                                wireproxy_peer_status["${peer_name}"]="${event_status}"
+
+                                local status_name="${wireproxy_status_table["${event_status}"]}"
+                                event fire peer_status "${peer_name} ${status_name}"
+                                ;;
+                            "D->D"|"U->U")
+                                :
+                                ;;
+                            *)
+                                read -r newline
+                                error "Invalid transition '${transition}' for peer '${peer}' newline '${newline}'"
+                                continue
+                        esac
+
+                        local host_transition="${wireproxy_online_count}|${transition}"
+
+                        case "${host_transition}" in
+                            "${wireproxy_online_max}|D->U")
+                                error "${host_transition}"
+                                ;;
+                            "0|U->D")
+                                error "${host_transition}"
+                                ;;
+                            "0|D->U")
+                                ((wireproxy_online_count+=1))
+                                event fire host_status "online"
+                                ;;
+                            "1|U->D")
+                                ((wireproxy_online_count-=1))
+                                event fire host_status "offline"
+                                ;;
+                            *"|D->U")
+                                ((wireproxy_online_count+=1))
+                                ;;
+                            *"|U->D")
+                                ((wireproxy_online_count-=1))
+                                ;;
+                            *"|D->D"|*"|U->U")
+                                :
+                                ;;
+                            *)
+                                error "${host_transition}"
+                        esac
+                        ;;
+                    N)
+                        # TODO handle network errors
+                        ;;
+                    W)
+                        # TODO handle bind errors
+                        # EIPC error -48: failed to set listen_port: listen udp4 :55554: bind: address already in use
+                        # WIPC error -48: failed to set listen_port: listen udp4 :55554: bind: address already in use
+                        # Wlisten tcp failed: listen tcp 127.0.0.1:3128: bind: address already in use
+                        # Wlisten tcp 127.0.0.1:22000: bind: address already in use
+                        ;;
+                    D|E) # Debug Error
+                        read -r msg
+                        error "[${event}] ${msg}"
+                        continue
+                        ;;
+                    *)
+                        read -r newline
+                        error "Invalid event [${event}] newline '${newline}'"
+                        continue
+                esac
+
+                read -r newline
+
+                if [[ "${#newline}" -gt 0 ]]
+                then
+                    error "Invalid newline '${newline}'"
+                fi
+            done
+
+            ;;
+        exit)
+            info
+
+            event on_status_change interface "stopped ${1}"
+            event fire exited "${1}"
+            ;;
+        run)
+            info
+
+            event on_status_change interface "starting"
+
+            wireproxy_service init_run
+
+            wireproxy_service exec \
+                | log file "wireproxy" \
+                | wireproxy_log parse \
+                | wireproxy_service main
+
+            wireproxy_service exit "${?}"
+            ;;
+        event)
+            local event="${1}" && shift
+
+            case "${event}" in
+                peer_status)
+                    local peer_name="${1}" && shift
+                    local status="${1}" && shift
+
+                    info "peer_status ${peer_name} ${status}"
+
+                    # TODO if wirething starts without network and was local to others before,
+                    # it needs a reload or it's need to save and restore the location information.
+                    # Without that, it will never reconnect
+                    peer_state set_polled_status "${peer_name}" "${status}"
+                    ;;
+                host_status)
+                    local status="${1}" && shift
+
+                    info "host_status ${status}"
+
+                    host_state set_polled_status "${status}"
+                    ;;
+                ready)
+                    info "ready ${wireproxy_service_status}->up"
+
+                    wireproxy_service_status="up"
+
+                    ui after_status_changed
+                    ;;
+                exited)
+                    local exit_status="${1}" && shift
+
+                    info "exited ${exit_status}"
+
+                    # TODO exited and not ready = failure
+                    if [[ "${wireproxy_service_status}" == "up" ]]
+                    then
+                        info "exited ${wireproxy_service_status}->down"
+                        wireproxy_service_status="down"
+                    else
+                        info "exited ${wireproxy_service_status}->failure"
+                        wireproxy_service_status="failure"
+                        # wirething fire_ensure_host_endpoint_is_working
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+function wireproxy_interface() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        protocol)
+            echo "udp"
+            ;;
+        deps)
+            wireproxy_service deps
+            ;;
+        init)
+            info
+
+            wg_quick_interface init
+            wireproxy_service init
+            ;;
+        up)
+            info
+
+            if [[ -v wireproxy_service_pid ]]
+            then
+                die "up was called twice"
+            fi
+
+            wg_quick_update_location
+            wireproxy_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
+
+            wireproxy_service run &
+            wireproxy_service_pid="${!}"
+            ;;
+        down)
+            info
+
+            if [[ ! -v wireproxy_service_pid ]]
+            then
+                info "'wireproxy' was not running"
+            else
+                if sys terminate_from_parent_pid "${wireproxy_service_pid}"
+                then
+                    info "'wireproxy' pid=${wireproxy_service_pid} was successfully stopped"
+                else
+                    info "'wireproxy' pid=${wireproxy_service_pid} was not running"
+                fi
+
+                wait "${wireproxy_service_pid}" || true
+
+                unset -v wireproxy_service_pid
+            fi
+            ;;
+        reload)
+            info
+
+            wireproxy_interface down
+            wireproxy_interface up
+            ;;
+        get)
+            local name="${1}" && shift
+
+            case "${name}" in
+                generates_status_events)
+                    return 0
+                    ;;
+                is_peer_local)
+                    wg_quick_interface "${action}" "${name}" ${@}
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 # udphole punch
 
 function udphole_punch() {
