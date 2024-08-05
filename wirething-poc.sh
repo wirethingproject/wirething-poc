@@ -2884,29 +2884,8 @@ function wirething() {
                 then
                     die "host could not encrypt and decrypt data"
                 else
-                    info "host could encrypt and decrypt data"
+                    debug "host could encrypt and decrypt data"
                 fi
-            }
-
-            {
-                wirething get host_port
-            } | {
-                read host_port
-
-                if [ "${host_port}" != "" ]
-                then
-                    interface set host_port "${host_port}"
-                else
-                    info "host_port is '${host_port:-''}'"
-                fi
-            }
-
-            {
-                wirething get host_endpoint
-            } | {
-                read host_endpoint
-
-                info "host_endpoint is ${host_endpoint:-''}"
             }
             ;;
         up_peer)
@@ -2931,20 +2910,7 @@ function wirething() {
                 then
                     die "host could not encrypt and decrypt peer data"
                 else
-                    info "host could encrypt and decrypt peer data"
-                fi
-            }
-
-            {
-                wirething get peer_endpoint "${peer_name}"
-            } | {
-                read peer_endpoint
-
-                if [ "${peer_endpoint}" != "" ]
-                then
-                    interface set peer_endpoint "${peer_name}" "${peer_endpoint}"
-                else
-                    info "peer_endpoint is ${peer_endpoint:-''}"
+                    debug "host could encrypt and decrypt peer data"
                 fi
             }
             ;;
@@ -2955,8 +2921,6 @@ function wirething() {
                     local port="${1}" && shift
                     info "host_port ${port}"
                     echo "${port}" > "${WT_HOST_PORT_FILE}"
-
-                    interface set host_port "${port}"
                     ;;
                 host_endpoint)
                     local endpoint="${1}" && shift
@@ -2970,8 +2934,6 @@ function wirething() {
 
                     info "peer_endpoint ${peer_name} ${endpoint}"
                     echo "${endpoint} ${timestamp}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}"
-
-                    interface set peer_endpoint "${peer_name}" "${endpoint}"
                     ;;
                 peer_local_port)
                     local peer_name="${1}" && shift
@@ -2979,8 +2941,6 @@ function wirething() {
 
                     info "peer_local_port ${peer_name} ${local_port}"
                     echo "${local_port}" > "${WT_PEER_ENDPOINT_PATH}/${peer_name}_local_port"
-
-                    interface set peer_local_port "${peer_name}" "${local_port}"
                     ;;
             esac
             ;;
@@ -4149,8 +4109,6 @@ function wirething_main() {
             config up
             event up
 
-            interface up
-
             # punch up
             # pubsub up
             encryption up
@@ -4166,9 +4124,13 @@ function wirething_main() {
 
             peer start
             host start
+
+            interface up
             ;;
         down)
             info
+
+            interface down || true
 
             peer stop
             host stop
@@ -4179,7 +4141,6 @@ function wirething_main() {
             encryption down || true
             # pubsub down || true
             # punch down || true
-            interface down || true
 
             event down || true
 
