@@ -2313,9 +2313,17 @@ function stun_punch() {
                         ;;
                     "Local address: "*)
                         STUN_LOCAL_PORT="${_line/*:/}"
+
+                        STUN_LOCAL_ENDPOINT="${_line/*: /}"
+                        STUN_LOCAL_ADDRESS="${STUN_LOCAL_ENDPOINT/:*/}"
+                        # STUN_LOCAL_PORT="${STUN_LOCAL_ENDPOINT/*:/}"
                         ;;
                     "Mapped address: "*)
                         STUN_REMOTE_ENDPOINT="${_line/*: /}"
+
+                        # STUN_NAT_ENDPOINT="${_line/*: /}"
+                        # STUN_NAT_ADDRESS="${STUN_NAT_ENDPOINT/:*/}"
+                        # STUN_NAT_PORT="${STUN_NAT_ENDPOINT/*:/}"
                         ;;
                     *)
                         error "${_line}"
@@ -2329,6 +2337,10 @@ function stun_punch() {
                 port)
                     info "port ${STUN_LOCAL_PORT:-''}"
                     echo "${STUN_LOCAL_PORT}"
+                    ;;
+                address)
+                    info "address ${STUN_LOCAL_ADDRESS:-''}"
+                    echo "${STUN_LOCAL_ADDRESS}"
                     ;;
                 endpoint)
                     info "endpoint ${STUN_REMOTE_ENDPOINT:-''}"
@@ -2429,6 +2441,18 @@ function ntfy_pubsub() {
                 esac
             }
             ;;
+        get_interface)
+            if stun_punch open
+            then
+                address="$(stun_punch get address)"
+                stun_punch close
+
+                if [[ "${address}" != "" ]]
+                then
+                    echo "--ipv4 --interface ${address}"
+                fi
+            fi
+            ;;
         subscribe_start)
             local topic="${1}" && shift
             local since="${1}" && shift
@@ -2436,8 +2460,10 @@ function ntfy_pubsub() {
 
             debug "${topic}"
 
-            debug "curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - ${NTFY_URL}/${topic}/${format}?since=${since}"
-            exec {NTFY_SUBSCRIBE_FD}< <(exec curl ${NTFY_CURL_OPTIONS} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
+            local interface="$(ntfy_pubsub get_interface)"
+
+            debug "curl ${NTFY_CURL_OPTIONS} ${interface} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - ${NTFY_URL}/${topic}/${format}?since=${since}"
+            exec {NTFY_SUBSCRIBE_FD}< <(exec curl ${NTFY_CURL_OPTIONS} ${interface} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
                     "${NTFY_URL}/${topic}/${format}?since=${since}")
             NTFY_SUBSCRIBE_PID="${!}"
             ;;
@@ -2452,7 +2478,6 @@ function ntfy_pubsub() {
                 else
                     info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was not running"
                 fi
-
             fi
             ;;
         subscribe_run)
