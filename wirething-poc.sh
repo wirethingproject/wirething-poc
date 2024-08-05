@@ -1209,6 +1209,11 @@ function wg_interface() {
                 wg_peer_address["${_peer_name}"]="$(wg_interface get peer_address "${_peer_name}")"
             done
             ;;
+        reload)
+            info
+
+            die "Not implemented"
+            ;;
         set)
             name="${1}" && shift
             case "${name}" in
@@ -1534,44 +1539,6 @@ function wg_quick_interface() {
                     local location="${1}" && shift
 
                     wg_quick_location["${peer_name}"]="${location}"
-                    ;;
-            esac
-            ;;
-        set)
-            local name="${1}" && shift
-
-            case "${name}" in
-                host_port)
-                    local port="${1}" && shift
-                    info "host_port ${port:-''}"
-
-                    if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
-                    then
-                        wg_quick_interface reload
-                    fi
-                    ;;
-                peer_endpoint)
-                    local peer_name="${1}" && shift
-                    local endpoint="${1}" && shift
-                    info "peer_endpoint ${peer_name} ${endpoint}"
-
-                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
-                    then
-                        wg_quick_interface reload
-                    fi
-                    ;;
-                peer_local_port)
-                    local peer_name="${1}" && shift
-                    local local_port="${1}" && shift
-                    info "peer_local_port ${peer_name} ${local_port}"
-
-                    local endpoint="${config["peer_wg_quick_local_ips_${peer_name}"]}:${local_port}"
-
-                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}" &&
-                        os_ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
-                    then
-                        wg_quick_interface reload
-                    fi
                     ;;
             esac
             ;;
@@ -2023,44 +1990,6 @@ function wireproxy_interface() {
                     ;;
                 ready)
                     ui after_status_changed
-            esac
-            ;;
-        set)
-            local name="${1}" && shift
-
-            case "${name}" in
-                host_port)
-                    local port="${1}" && shift
-                    info "host_port ${port:-''}"
-
-                    if ! grep -q "ListenPort = ${port}" < "${WGQ_CONFIG_FILE}"
-                    then
-                        wireproxy_interface reload
-                    fi
-                    ;;
-                peer_endpoint)
-                    local peer_name="${1}" && shift
-                    local endpoint="${1}" && shift
-                    info "peer_endpoint ${peer_name} ${endpoint}"
-
-                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}"
-                    then
-                        wireproxy_interface reload
-                    fi
-                    ;;
-                peer_local_port)
-                    local peer_name="${1}" && shift
-                    local local_port="${1}" && shift
-                    info "peer_local_port ${peer_name} ${local_port}"
-
-                    local endpoint="${config["peer_wg_quick_local_ips_${peer_name}"]}:${local_port}"
-
-                    if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}" &&
-                        os_ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
-                    then
-                        wireproxy_interface reload
-                    fi
-                    ;;
             esac
             ;;
         get)
