@@ -46,7 +46,7 @@ fi
 
 if [ "${LOG_TIME}" == "true" ]
 then
-    alias sys_log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
+    alias sys_log='printf "%(%FT%T%z)T ${BASHPID} %s\n" "${EPOCHSECONDS}"'
 else
     alias sys_log='echo'
 fi
