@@ -1883,7 +1883,7 @@ function wireproxy_interface() {
                 return 1
             fi
 
-            if ! read -u "${WIREPROXY_FD}" line
+            if ! read line <&"${WIREPROXY_FD}"
             then
                 return 1
             fi
