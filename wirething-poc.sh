@@ -2902,6 +2902,36 @@ function wirething() {
                     ;;
             esac
             ;;
+        ensure_host_endpoint_is_working)
+            debug
+
+            if ! wirething test_host_endpoint
+            then
+                if wirething punch_host_endpoint
+                then
+                    wirething broadcast_host_endpoint
+                fi
+            fi
+            ;;
+        test_host_endpoint)
+            debug
+
+            local host_endpoint host_port
+
+            read host_endpoint < <(wirething get host_endpoint)
+            read host_port < <(wirething get host_port)
+
+            if [[ "${host_port}" != "0" &&
+                  "${host_port}" != "" && "${host_endpoint}" != "" ]] &&
+                punch status "${host_port}" "${host_endpoint}"
+            then
+                info "succeeded"
+                return 0
+            else
+                info "failed"
+                return 1
+            fi
+            ;;
         punch_host_endpoint)
             debug
 
@@ -2916,13 +2946,18 @@ function wirething() {
 
                 if [[ "${host_port}" != "" && "${host_endpoint}" != "" ]]
                 then
+                    info "succeeded"
+
                     wirething set host_endpoint "${host_endpoint}"
                     wirething set host_port "${host_port}"
+
+                    return 0
                 else
-                    error "host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
+                    error "get failed, host_port='${host_port}' or host_endpoint='${host_endpoint}' are empty"
                     return 1
                 fi
             else
+                info "open failed"
                 return 1
             fi
             ;;
@@ -2962,6 +2997,8 @@ function wirething() {
                         fi
                     }
                 }
+            else
+                error "empty host_endpoint"
             fi
             ;;
         poll_encrypted_host_endpoint)
@@ -3061,12 +3098,12 @@ function wirething() {
                     ;;
                 *'"event":"timeout"'*)
                     info "event=timeout"
-                    sleep "${WT_PAUSE_AFTER_ERROR}"
+                    sleep "${WT_PAUSE_AFTER_TIMEOUT}"
                     ;;
                 *'"event":"connection_lost"'*)
                     info "event=connection_lost"
                     sleep "${WT_PAUSE_AFTER_CONNECTION_LOST}"
-                    event fire punch
+                    event fire ensure_host_endpoint_is_working
                     ;;
                 *'"event":"error"'*)
                     info "event=error"
@@ -3075,6 +3112,14 @@ function wirething() {
                 *)
                     info "event=${line}"
             esac
+            ;;
+        fire_ensure_host_endpoint_is_working)
+            event fire ensure_host_endpoint_is_working
+            ;;
+        fire_ensure_host_endpoint_is_published)
+            local peer_name="${1}" && shift
+
+            event fire ensure_host_endpoint_is_published "${peer_name}"
             ;;
         event)
             local event="${1}" && shift
@@ -3085,21 +3130,31 @@ function wirething() {
                     local endpoint="${1}" && shift
                     local local_port="${1}" && shift
                     local event_time="${1}" && shift
-                    wirething set peer_endpoint "${peer_name}" "${endpoint}" "${event_time}"
 
                     if [ "${local_port}" != "0" ]
                     then
                         wirething set peer_local_port "${peer_name}" "${local_port}"
                     fi
+
+                    wirething set peer_endpoint "${peer_name}" "${endpoint}" "${event_time}"
+
+                    interface reload
                     ;;
-                punch)
-                    if wirething punch_host_endpoint
+                ensure_host_endpoint_is_working)
+                    interface down
+
+                    wirething ensure_host_endpoint_is_working
+
+                    interface up
+                    ;;
+                ensure_host_endpoint_is_published)
+                    local peer_name="${1}" && shift
+
+                    if ! wirething ensure_host_endpoint_is_published "${peer_name}"
                     then
-                        info "punch succeeded"
-                        wirething broadcast_host_endpoint
-                    else
-                        info "punch failed"
+                        :
                     fi
+                    ;;
             esac
             ;;
         poll_encrypted_peer_endpoint)
@@ -3451,7 +3506,7 @@ function host_task() {
     local action="${1}" && shift
 
     case "${action}" in
-        ensure_host_endpoint_is_published)
+        ensure_host_endpoint_is_working)
             host_context set
 
             info
@@ -3463,34 +3518,7 @@ function host_task() {
                 info "pubsub status: offline"
                 status="offline"
             else
-                read host_endpoint < <(wirething get host_endpoint)
-                read host_port < <(wirething get host_port)
-
-                local new_punch="failed"
-
-                if wirething punch_host_endpoint
-                then
-                    new_punch="success"
-                fi
-
-                if [[ "${host_port}" != "0" && "${host_port}" != "" && "${host_endpoint}" != "" ]] &&
-                    punch status "${host_port}" "${host_endpoint}"
-                then
-                    wirething set host_endpoint "${host_endpoint}"
-                    wirething set host_port "${host_port}"
-                else
-                    info "punch status: offline"
-                    status="offline"
-
-                    if [ "${new_punch}" == "success" ]
-                    then
-                        wirething broadcast_host_endpoint
-                        status="online"
-                    else
-                        wirething set host_endpoint "${host_endpoint}"
-                        wirething set host_port "${host_port}"
-                    fi
-                fi
+                wirething fire_ensure_host_endpoint_is_working
             fi
 
             host_context unset
@@ -3499,12 +3527,12 @@ function host_task() {
             local task="${1}" && shift
 
             case "${task}" in
-                host_ensure_host_endpoint)
-                    tasks register name "host_ensure_host_endpoint" \
+                ensure_host_endpoint_is_working)
+                    tasks register name "ensure_host_endpoint_is_working" \
                         frequency "${WT_HOST_OFFLINE_ENSURE_INTERVAL}" \
-                        start now \
+                        start "+${WT_HOST_OFFLINE_START_DELAY}" \
                         stop never \
-                        task "host_task ensure_host_endpoint_is_published"
+                        task "host_task ensure_host_endpoint_is_working"
                     ;;
             esac
             ;;
@@ -3512,8 +3540,8 @@ function host_task() {
             local task="${1}" && shift
 
             case "${task}" in
-                host_ensure_host_endpoint)
-                    tasks unregister name "host_ensure_host_endpoint"
+                ensure_host_endpoint_is_working)
+                    tasks unregister name "ensure_host_endpoint_is_working"
                     ;;
             esac
     esac
@@ -3528,7 +3556,7 @@ function host() {
             ;;
         init)
             info
-            WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-20}" # 20 seconds
+            WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-30}" # 30 seconds
             WT_HOST_OFFLINE_PULL_STATUS_INTERVAL="${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL:-30}" # 30 seconds
             WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-600}" # 10 minute
 
@@ -3566,26 +3594,32 @@ function host() {
                 on_host_start)
                     info "${new_event}"
 
-                    tasks register name "host_poll_status" \
-                        frequency "${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL}" \
-                        start "+${WT_HOST_OFFLINE_START_DELAY}" \
-                        stop never \
-                        task "host poll_status"
+                    if ! interface get generates_status_events
+                    then
+                        tasks register name "host_poll_status" \
+                            frequency "${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL}" \
+                            start "+${WT_HOST_OFFLINE_START_DELAY}" \
+                            stop never \
+                            task "host poll_status"
+                    fi
                     ;;
                 on_host_stop)
                     info "${new_event}"
 
-                    tasks unregister name "host_poll_status"
+                    if ! interface get generates_status_events
+                    then
+                        tasks unregister name "host_poll_status"
+                    fi
                     ;;
                 on_host_offline)
                     info "${new_event}"
 
-                    host_task register "host_ensure_host_endpoint"
+                    host_task register "ensure_host_endpoint_is_working"
                     ;;
                 on_host_online)
                     info "${new_event}"
 
-                    host_task unregister "host_ensure_host_endpoint"
+                    host_task unregister "ensure_host_endpoint_is_working"
                     ;;
             esac
             ;;
@@ -3769,7 +3803,7 @@ function peer_task() {
             peer_context set "${peer_name}"
 
             info "${peer_name}"
-            wirething ensure_host_endpoint_is_published "${peer_name}" || true
+            wirething fire_ensure_host_endpoint_is_published "${peer_name}" || true
 
             peer_context unset
             ;;
@@ -3788,7 +3822,7 @@ function peer_task() {
                 peer_ensure_host_endpoint)
                     tasks register name "peer_ensure_host_endpoint_${peer_name}" \
                         frequency "${WT_PEER_OFFLINE_ENSURE_INTERVAL}" \
-                        start now \
+                        start "+${WT_PEER_OFFLINE_START_DELAY}" \
                         stop never \
                         task "peer_task ensure_host_endpoint_is_published ${peer_name}"
                     ;;
@@ -3818,7 +3852,7 @@ function peer() {
             ;;
         init)
             info
-            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-5}" # 10 seconds
+            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-30}" # 30 seconds
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
             WT_PEER_OFFLINE_PULL_STATUS_INTERVAL="${WT_PEER_OFFLINE_PULL_STATUS_INTERVAL:-30}" # 30 seconds
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
@@ -3997,6 +4031,7 @@ function wirething_main() {
 
             WT_EPHEMERAL_PATH="${WT_RUN_PATH}/${WT_PID}"
             WT_PAUSE_AFTER_ERROR="${WT_PAUSE_AFTER_ERROR:-30}" # 30 seconds
+            WT_PAUSE_AFTER_TIMEOUT="${WT_PAUSE_AFTER_TIMEOUT:-10}" # 10 seconds
             WT_PAUSE_AFTER_CONNECTION_LOST="${WT_PAUSE_AFTER_CONNECTION_LOST:-10}" # 10 seconds
 
             WT_TMP_PATH="${WT_EPHEMERAL_PATH}/tmp"
