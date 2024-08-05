@@ -1036,6 +1036,253 @@ WT_CONFIG_TYPE="${WT_CONFIG_TYPE:-env}"
 alias config="${WT_CONFIG_TYPE}_config"
 config ""        || die "invalid WT_CONFIG_TYPE *${WT_CONFIG_TYPE}*, options: $(options config)"
 
+# status
+
+function status() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            declare -g -A status
+
+            status["pubsub"]="stopped"
+            status["interface"]="stopped"
+            ;;
+        init_host)
+            local name="${1}"
+
+            status["host_${name}"]="offline"
+            ;;
+        init_peer)
+            local name="${1}"
+
+            status["peer_${name}"]="offline"
+            ;;
+        set)
+            local key="${1}" && shift
+            local value="${1}" && shift
+
+            # if [[ ${FUNCNAME[1]} != "on_status_change" ]]
+            # then
+            #     #error "invalid key '${key}'"
+            #     return
+            # fi
+
+            case "${key}" in
+                pubsub|interface)
+                    case "${value}" in
+                        starting|running|stopped|failure)
+                            status["${key}"]="${value}"
+                            ;;
+                        *)
+                            error "invalid value '${key}=${value}'"
+                    esac
+                    ;;
+                host_*|peer_*)
+                    case "${value}" in
+                        online|offline)
+                            status["${key}"]="${value}"
+                            ;;
+                        *)
+                            error "invalid value '${key}=${value}'"
+                    esac
+                    ;;
+                *)
+                    error "invalid key '${key}'"
+            esac
+            ;;
+        *)
+            error "invalid action '${action}'"
+    esac
+}
+
+# on_status_change
+
+function on_status_change() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        pubsub)
+            local new_status="${1}"
+
+            local transition="${status["pubsub"]}->${new_status}"
+
+            info "${transition}"
+
+            case "${transition}" in
+                *"->starting")
+                    status set pubsub "starting"
+                    ;;
+                "starting->exited")
+                    status set pubsub "failure"
+                    ;;
+                "starting->bind_error")
+                    status set pubsub "failure"
+                    ;;
+                "starting->running")
+                    status set pubsub "running"
+                    ;;
+                "running->exited")
+                    status set pubsub "stopped"
+                    ;;
+                *)
+                    error "invalid transition '${transition}'"
+            esac
+            ;;
+        interface)
+            local new_status="${1}"
+
+            local transition="${status["interface"]}->${new_status}"
+
+            info "${transition}"
+
+            case "${transition}" in
+                # *"->starting")
+                "stopped->starting"|"failure->starting")
+                    status set interface "starting"
+                    ;;
+                "starting->stopped")
+                    status set interface "failure"
+                    ;;
+                "starting->bind_error")
+                    status set interface "failure"
+                    # background/start/fire: wirething fire_ensure_host_endpoint_is_working
+                    ;;
+                "starting->running")
+                    status set interface "running"
+
+                    # TODO ui after_status_changed
+                    ;;
+                "running->stopped")
+                    status set interface "stopped"
+                    ;;
+                *)
+                    error "invalid transition '${transition}'"
+            esac
+            ;;
+        host)
+            local name="${1}" && shift
+            local new_status="${1}"
+
+            local transition="${status["host_${name}"]}->${new_status}"
+
+            info "${transition} for 'host_${name}'"
+
+            case "${transition}" in
+                "offline->online")
+                    status set "host_${name}" "online"
+                    ;;
+                "online->offline")
+                    status set "host_${name}" "offline"
+                    ;;
+                *)
+                    error "invalid transition '${transition}' for 'host_${name}'"
+            esac
+            ;;
+        peer)
+            local name="${1}" && shift
+            local new_status="${1}"
+
+            local transition="${status["peer_${name}"]}->${new_status}"
+
+            info "${transition} for 'peer_${name}'"
+
+            case "${transition}" in
+                "offline->online")
+                    status set "peer_${name}" "online"
+                    ;;
+                "online->offline")
+                    status set "peer_${name}" "offline"
+                    ;;
+                *)
+                    error "invalid transition '${transition}' for 'peer_${name}'"
+            esac
+            ;;
+        *)
+            error "invalid action '${action}'"
+    esac
+}
+
+# state
+
+function state() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        init)
+            declare -g -A state
+            ;;
+        init_host)
+            local name="${1}" && shift
+            local key="${1}" && shift
+            local value="${1}"
+
+            state["host_${name}_${key}"]="${value}"
+            ;;
+        init_peer)
+            local name="${1}" && shift
+            local key="${1}" && shift
+            local value="${1}"
+
+            state["host_${name}_${key}"]="${value}"
+            ;;
+        set)
+            local key="${1}" && shift
+            local value="${1}"
+
+            # if [[ ${FUNCNAME[1]} != "on_state_change" ]]
+            # then
+            #     #error "invalid key '${key}'"
+            #     return
+            # fi
+
+            case "${key}" in
+                host_port|host_endpoint)
+                    state["${key}"]="${value}"
+                    ;;
+                peer_port|peer_endpoint)
+                    local name="${1}"
+                    state["${name}_${key}"]="${value}"
+                    ;;
+                host_address)
+                    state["${key}"]="${value}"
+                    ;;
+                peer_address)
+                    local name="${1}" && shift
+                    local host_address="${1}"
+                    state["${name}_${key}_for_host_address_${host_address}"]="${value}"
+                    ;;
+                *)
+                    error "invalid key '${key}'"
+            esac
+            ;;
+        *)
+            error "invalid action '${action}'"
+    esac
+}
+# on_state_change
+
+function on_state_change() {
+    local action="${1}" && shift
+
+    case "${action}" in
+        peer_endpoint)
+            local peer_name="${1}" && shift
+            local value="${1}"
+
+            state set "${peer_name}" endpoint "${value}"
+            ;;
+        host_endpoint)
+            local host_name="${1}" && shift
+            local value="${1}"
+
+            state set "${host_name}" endpoint "${value}"
+            ;;
+        *)
+            error "invalid action '${action}'"
+    esac
+}
+
 # event
 
 function event() {
@@ -1066,6 +1313,16 @@ function event() {
                 info "'${EVENT_FIFO_FILE}' was successfully deleted"
             else
                 error "'${EVENT_FIFO_FILE}' delete error"
+            fi
+            ;;
+        on_status_change|on_state_change)
+            local len event="${action} ${@}"
+            debug "len=${#event} '${event}'"
+
+            printf -v "len" "%02X" "${#event}"
+            if ! echo -ne "\x${len}${event}" >&${_event_fd}
+            then
+                info "error writing '${event}'"
             fi
             ;;
         fire)
@@ -4084,6 +4341,10 @@ function wirething_main() {
             sys start
 
             config init
+
+            status init
+            state init
+
             event init
             tasks init
 
