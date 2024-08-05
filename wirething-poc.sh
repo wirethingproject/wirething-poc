@@ -1563,9 +1563,9 @@ function wg_quick_interface() {
                 peer_local_port)
                     local peer_name="${1}" && shift
                     local local_port="${1}" && shift
-                    info "peer_endpoint ${peer_name} ${local_port}"
+                    info "peer_local_port ${peer_name} ${local_port}"
 
-                    endpoint="${config["peer_wg_quick_local_ips_${peer_name}"]}:${local_port}"
+                    local endpoint="${config["peer_wg_quick_local_ips_${peer_name}"]}:${local_port}"
 
                     if ! grep -q "Endpoint = ${endpoint}" < "${WGQ_CONFIG_FILE}" &&
                         os_ping_quick "${config["peer_wg_quick_local_ips_${peer_name}"]}" >&${null}
