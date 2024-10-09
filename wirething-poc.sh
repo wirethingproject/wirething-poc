@@ -553,26 +553,39 @@ function udp() {
             echo "lsof grep sed head"
             ;;
         open)
-            local host="${1}" && shift
-            local port="${1}" && shift
+            UDP_HOST="${1}" && shift
+            UDP_PORT="${1}" && shift
 
-            exec {UDP_SOCKET}<>/dev/udp/${host}/${port}
+            UDP_SOCKET_PID="${BASHPID}"
+
+            # TODO output error to trace log
+            if ! exec {UDP_SOCKET}<>/dev/udp/${UDP_HOST}/${UDP_PORT} 2>&${WT_LOG_TRACE} 1>&${WT_LOG_TRACE}
+            then
+                return 1
+            fi
             ;;
         close)
             exec {UDP_SOCKET}>&- || true
 
+            unset -v UDP_SOCKET_PID
             unset -v UDP_SOCKET
+            unset -v UDP_PORT
+            unset -v UDP_HOST
             ;;
         port)
-            local host="${1}" && shift
-            local port="${1}" && shift
-            local pid="${1}" && shift
-
             {
-                lsof -P -n -i "udp@${host}:${port}" -a -p "${pid}" \
-                    || echo " ${pid} UDP :0->"
+                lsof -P -n -i "udp@${UDP_HOST}:${UDP_PORT}" -a -p "${UDP_SOCKET_PID}" \
+                    || echo " ${UDP_SOCKET_PID} UDP :0->"
             } | {
-                grep -m 1 " ${pid} " | sed "s,.* UDP .*:\(.*\)->.*,\1,"
+                grep -m 1 " ${UDP_SOCKET_PID} " | sed "s,.* UDP .*:\(.*\)->.*,\1,"
+            }
+            ;;
+        address)
+            {
+                lsof -P -n -i "udp@${UDP_HOST}:${UDP_PORT}" -a -p "${UDP_SOCKET_PID}" \
+                    || echo " ${UDP_SOCKET_PID} UDP :0->"
+            } | {
+                grep -m 1 " ${UDP_SOCKET_PID} " | sed "s,.* UDP \(.*\):.*->.*,\1,"
             }
             ;;
         writeline)
