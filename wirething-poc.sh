@@ -46,7 +46,7 @@ fi
 
 if [ "${LOG_TIME}" == "true" ]
 then
-    alias sys_log='printf "%(%FT%T%z)T ${BASHPID} %s\n" "${EPOCHSECONDS}"'
+    alias sys_log='printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}"'
 else
     alias sys_log='echo'
 fi
@@ -82,8 +82,8 @@ function os() {
 
             case "${OSTYPE}" in
                 darwin*)
-                    alias os_ping="ping -c 1 -t 5"
-                    alias os_ping_quick="ping -c 1 -t 1"
+                    alias os_ping="ping -c 5 -t 5 -q -o"
+                    alias os_ping_quick="ping -c 1 -t 1 -q -o"
                     alias os_base64='base64'
 
                     if type -a osascript >&${null} 2>&${null}
@@ -94,8 +94,9 @@ function os() {
                     fi
                     ;;
                 linux*)
-                    alias os_ping="ping -c 1 -W 5"
-                    alias os_ping_quick="ping -c 1 -W 1"
+                    # TODO add -o and -q to linux ping
+                    alias os_ping="ping -c 1 -w 5"
+                    alias os_ping_quick="ping -c 1 -w 1"
                     alias os_base64='os linux base64'
 
                     case "${OSTYPE}" in
@@ -156,18 +157,22 @@ function os() {
 
                     case "${type}" in
                         log)
-                            termux-notification -t "${title}" -c "${text}"
+                            termux-notification -t "${title}" -c "${text}" \
+                                || true
                             ;;
                         status)
                             local group="${1}" && shift
 
                             termux-notification --group "${group}" -t "${title}" -c "${text}" \
-                                 --id "${group}" --ongoing --alert-once
+                                 --id "${group}" --ongoing --alert-once \
+                                 || true
                             ;;
                     esac
                     ;;
             esac
             ;;
+        # TODO Split ui ops into set value and call notification, to only call after
+        # the last set value of the transition loop
         darwin)
             local command="${1}" && shift
 
@@ -179,12 +184,14 @@ function os() {
 
                     case "${type}" in
                         log)
-                            osascript -e "display notification \"${text}\" with title \"${title}\""
+                            osascript -e "display notification \"${text}\" with title \"${title}\"" \
+                                || true
                             ;;
                         status)
                             local group="${1}" && shift
 
-                            osascript -e "display notification \"${text}\" with title \"${title}\""
+                            osascript -e "display notification \"${text}\" with title \"${title}\"" \
+                                || true
                             ;;
                     esac
                     ;;
@@ -234,15 +241,15 @@ function sys() {
             ;;
         terminate)
             local pid="${1}"
-            kill -TERM "${pid}" 2>&${null}
+            kill -TERM "${pid}" 2>&${WT_LOG_TRACE}
             ;;
         terminate_from_group)
             local gpid="${1}"
-            pkill -TERM -g "${gpid}" 2>&${null}
+            pkill -TERM -g "${gpid}" 2>&${WT_LOG_TRACE}
             ;;
         terminate_from_parent_pid)
             local ppid="${1}"
-            pkill -TERM -P "${ppid}" 2>&${null}
+            pkill -TERM -P "${ppid}" 2>&${WT_LOG_TRACE}
             ;;
         is_running)
             if [ "${_sys_running}" == "true" ]
@@ -329,20 +336,23 @@ function sys() {
                         echo "" >&0 2>&${null} || true
                     fi
                     ;;
+                ERR)
+                    ;;
             esac
+
+            local err_file="${_sys_error_path}/$(date -I).log"
+            LOG_TIME=true sys signal_log >> "${err_file}" || true
 
             if ! sys signal_log >&${err} 2>&${null}
             then
-                local err_file="${_sys_error_path}/$(date -I).log"
-
-                sys signal_log >> "${err_file}"
-
                 if [ -t 0 ]
                 then
-                    sys signal_stderr_msg "tty" >> "${err_file}"
+                    sys signal_stderr_msg "tty" >> "${err_file}" || true
                     exec {tty}>&0
+
+                    LOG_TIME=true sys signal_log >&${tty} 2>&${null} || true
                 else
-                    sys signal_stderr_msg "${err_file}" >> "${err_file}"
+                    sys signal_stderr_msg "${err_file}" >> "${err_file}" || true
                     exec {tty}>> "${err_file}"
                 fi
 
@@ -371,10 +381,15 @@ function sys() {
                 level="ERROR"
             fi
 
-            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "${level} signal=${signal_str::7} was_running=${was_running/true/true } is_running=${_sys_running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
+            if [ "${LOG_TIME}" == "true" ]
+            then
+                printf "%(%FT%T%z)T " "${EPOCHSECONDS}"
+            fi
+
+            echo "${BASHPID} ${level} signal=${signal_str::7} was_running=${was_running/true/true } is_running=${_sys_running/true/true } lineno=${lineno::4} ${funcname} ${sig_action} result=${result}"
             ;;
         signal_stderr_msg)
-            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "ERROR Error writing to stderr fd=${err}, redirecting stderr to ${1}"
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "${BASHPID} ERROR Error writing to stderr fd=${err}, redirecting stderr to ${1}"
             ;;
     esac
 }
@@ -432,6 +447,10 @@ function log() {
             alias error="log error"
 
             alias custom_log="log custom_log"
+
+            export WT_LOG_ERROR WT_LOG_INFO WT_LOG_DEBUG WT_LOG_TRACE
+            # export error info debug trace
+            export -f log
             ;;
         short4)
             echo "${1::4}"
@@ -452,16 +471,17 @@ function log() {
             printf -v "${var_name}" "%.2u:%(%M:%S)T" "${hours}" "${seconds}"
             ;;
         trace)
-            sys_log "TRACE ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
+            sys_log "${BASHPID} TRACE ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
             ;;
         debug)
-            sys_log "DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
+            sys_log "${BASHPID} DEBUG ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_DEBUG} || true
             ;;
         info)
-            sys_log "INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_INFO} || true
+            sys_log "${BASHPID} INFO  ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_INFO} || true
             ;;
         error)
-            sys_log "ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_ERROR} || true
+            printf "%(%FT%T%z)T %s\n" "${EPOCHSECONDS}" "${BASHPID} ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >> "${_sys_error_path}/$(date -I).log" || true
+            sys_log "${BASHPID} ERROR ${log_prefix:-[---------]} ${FUNCNAME[1]:-} ${action:-} ${*}" >&${WT_LOG_ERROR} || true
             ;;
         custom_log)
             local line="${1}" && shift
@@ -471,7 +491,7 @@ function log() {
 
             local level_name="${level/info/info }"
 
-            sys_log "${level_name^^} [${app}] ${line:${start_index}}" >&${_fd_from_level[${level}]} || true
+            sys_log "${BASHPID} ${level_name^^} [${app}] ${line:${start_index}}" >&${_fd_from_level[${level}]} || true
             ;;
         file)
             local name="${1}" && shift
@@ -497,6 +517,7 @@ function log() {
     esac
 }
 
+# TODO reorder to [sys, log, os]. Move die to sys and maybe move signal outside sys
 os init
 sys init
 log init
