@@ -1593,7 +1593,7 @@ function wireproxy_config() {
             if ! wireproxy_compat 1 0 9
             then
                 WIREPROXY_HEALTH_BIND="disabled"
-                error "health bind disabled, wireproxy not compatible with version 1.0.9"
+                info "health bind disabled, wireproxy not compatible with version 1.0.9"
             fi
 
             wg_quick_config init
@@ -1640,12 +1640,15 @@ function wireguard_log() {
                 "s,^DP(........) - (Received handshake initiation.*$),P\1U,"
                 # Peer Offline
                 -e
-                "s,^DP(........) - (Handshake did not complete after 5 seconds. retrying .try 4.$),P\1D,"
+                "s,^DP(........) - (Handshake did not complete after 5 seconds. retrying .try 20.$),P\1D,"
                 -e
                 "s,^EP(........) - (Failed to send data packets.*),P\1D,"
                 # Interface Ready
                 -e
                 "s,^D(Interface state was Down. requested Up. now Up),R,"
+                # Bind error (exit)
+                -e
+                "s,^E.*: (listen udp4 :.*): (bind: address already in use)$,E\2 \1,"
                 # Delete
                 -e
                 "/^DP........ - Sending|^DP........ - Handshake|^DP........ - Removing|^DP........ - Retrying/d"
@@ -1660,7 +1663,7 @@ function wireguard_log() {
         parse)
             info
 
-            exec sed -u "${wireguard_log_parser[@]}"
+            exec -a "wireguard_log parse" sed -u "${wireguard_log_parser[@]}"
             ;;
     esac
 }
@@ -1689,12 +1692,14 @@ function wireproxy_log() {
                 -E
                 -e
                 "s,^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} ,W,"
+                -e
+                "/^WHealth metric request: .metrics$/d"
             )
             ;;
         parse)
             info
 
-            exec sed -u "${wireproxy_log_parser[@]}" \
+            exec -a "wireproxy_log parse" sed -u "${wireproxy_log_parser[@]}" \
                 | wireguard_log parse
             ;;
     esac
