@@ -15,7 +15,7 @@ export LC_ALL=C
 if ! [[ (${BASH_VERSINFO[0]} -gt 5) ||
         (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -ge 0) ]]
 then
-    local version="${BASH_VERSINFO[@]}"
+    version="${BASH_VERSINFO[@]}"
     echo "bash ${version// /.}"
     echo "bash < 5.0 not supported"
     exit 1
