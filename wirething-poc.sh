@@ -1430,11 +1430,55 @@ function wg_quick_interface() {
             ;;
         reload)
             info
+            {
+            local _port
 
+            _port="$(cat ${WGQ_CONFIG_FILE}|grep Listen|cut -f 3 -d " ")"
+
+            echo "### netstat ###"
+            netstat -an|grep ${_port}
+            echo "### lsof ###"
+            lsof -P -n -i |grep ${_port}
+            echo "### lsof ###"
+            lsof -P -n -i |grep -i wire
+
+            echo "### OLD: ${WGQ_CONFIG_FILE} ###"
+            cat "${WGQ_CONFIG_FILE}"
+
+            # TODO not working, port already in use
             wg_quick_update_location
             wg_quick_generate_config_file | sys buffer_to_file "${WGQ_CONFIG_FILE}"
-            wg syncconf "${WG_INTERFACE}" <(wg-quick strip "${WGQ_CONFIG_FILE}")
-            wg set "${WG_INTERFACE}" private-key "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}"
+
+            echo -e "\n### NEW: ${WGQ_CONFIG_FILE} ###"
+            cat "${WGQ_CONFIG_FILE}"
+
+            echo -e "\n### wg show ###"
+            wg show
+            echo -e "\n### wg showconf ###"
+            wg showconf "${WG_INTERFACE}"
+            echo -e "\nwg syncconf ${WG_INTERFACE}"
+            echo -e "\n### wg-quick strip ###"
+            wg-quick strip "${WGQ_CONFIG_FILE}"
+            echo -e "\n### END ###"
+
+            } 2>&${null} 1>&${null}
+            # } 2>&${WT_LOG_INFO} 1>&${WT_LOG_INFO}
+
+            # TODO try to understand why sometimes the error below happen
+            # Unable to modify interface: Address already in use
+            if wg syncconf "${WG_INTERFACE}" <(wg-quick strip "${WGQ_CONFIG_FILE}") \
+                2>&${WT_LOG_ERROR} 1>&${WT_LOG_ERROR}
+            then
+                if ! wg set "${WG_INTERFACE}" private-key "${WT_CONFIG_PATH}/${WGQ_HOST_PRIVATE_KEY_FILE}" \
+                    2>&${WT_LOG_ERROR} 1>&${WT_LOG_ERROR}
+                then
+                    error "wg set private-key exit status ${?}"
+                    wg_quick_interface down
+                fi
+            else
+                error "wg syncconf exit status ${?}"
+                wg_quick_interface down
+            fi
             ;;
         on_location)
             local peer_name="${1}" && shift
@@ -1727,19 +1771,14 @@ function wireproxy_service() {
             wireproxy_log init
 
             wireproxy_service_status="down"
-            ;;
-        init_run)
-            info
 
-            trap "" ERR
-            set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+            declare -g -A wireproxy_name_table
+            declare -g -A wireproxy_peer_status
 
             declare -g -A wireproxy_status_table=(
                 ["U"]="online"
                 ["D"]="offline"
             )
-
-            declare -g -A wireproxy_name_table
 
             local wg_pub="${config["host_wg_pub"]}"
             local peer="${wg_pub::4}${wg_pub:(-5):4}"
@@ -1752,17 +1791,14 @@ function wireproxy_service() {
                 peer="${wg_pub::4}${wg_pub:(-5):4}"
 
                 wireproxy_name_table["${peer}"]="${_peer_name}"
+                wireproxy_peer_status["${peer}"]="D"
             done
+            ;;
+        init_run)
+            info
 
-            declare -g -A wireproxy_peer_status
-
-            for _peer_name in ${config["peer_name_list"]}
-            do
-                wireproxy_peer_status["${_peer_name}"]="D"
-            done
-
-            wireproxy_online_count=0
-            wireproxy_online_max="${#wireproxy_peer_status[@]}"
+            trap "" ERR
+            set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
 
             wireproxy_exec=(
                 "${WIREPROXY_BIN}"
@@ -1779,10 +1815,25 @@ function wireproxy_service() {
         exec)
             info
 
-            exec "${wireproxy_exec[@]}" -c <(wireproxy_config generate) 2>&1
+            # TODO test without exec and with exec to see who is the parent
+            # "${wireproxy_exec[@]}" -c <(wireproxy_config generate) 2>&1
+            # exec "${wireproxy_exec[@]}" -c <(wireproxy_config generate) 2>&1
             ;;
         main)
             info
+
+            local wireproxy_online_count=0
+            local wireproxy_online_max="${#wireproxy_peer_status[@]}"
+
+            debug "${!wireproxy_peer_status[@]}"
+            for _peer in ${!wireproxy_peer_status[@]}
+            do
+                debug "${_peer}"
+                if [[ "${wireproxy_peer_status["${_peer}"]}" == "U" ]]
+                then
+                    ((wireproxy_online_count+=1))
+                fi
+            done
 
             while read -r -N 1 event
             do
@@ -1795,15 +1846,13 @@ function wireproxy_service() {
                         read -r -N 8 peer
                         read -r -N 1 event_status
 
-                        local peer_name="${wireproxy_name_table["${peer}"]}"
-                        local transition="${wireproxy_peer_status["${peer_name}"]}->${event_status}"
+                        local transition="${wireproxy_peer_status["${peer}"]}->${event_status}"
 
                         case "${transition}" in
                             "D->U"|"U->D")
-                                wireproxy_peer_status["${peer_name}"]="${event_status}"
+                                wireproxy_peer_status["${peer}"]="${event_status}"
 
-                                local status_name="${wireproxy_status_table["${event_status}"]}"
-                                event fire peer_status "${peer_name} ${status_name}"
+                                event fire peer_status "${peer} ${event_status}"
                                 ;;
                             "D->D"|"U->U")
                                 :
@@ -1901,7 +1950,8 @@ function wireproxy_service() {
 
             wireproxy_service init_run
 
-            wireproxy_service exec \
+            # wireproxy_service exec \
+            "${wireproxy_exec[@]}" -c <(wireproxy_config generate) 2>&1 \
                 | log file "wireproxy" \
                 | wireproxy_log parse \
                 | wireproxy_service main
@@ -1913,8 +1963,13 @@ function wireproxy_service() {
 
             case "${event}" in
                 peer_status)
-                    local peer_name="${1}" && shift
-                    local status="${1}" && shift
+                    local peer="${1}" && shift
+                    local event_status="${1}" && shift
+
+                    wireproxy_peer_status["${peer}"]="${event_status}"
+
+                    local peer_name="${wireproxy_name_table["${peer}"]}"
+                    local status="${wireproxy_status_table["${event_status}"]}"
 
                     info "peer_status ${peer_name} ${status}"
 
@@ -1935,7 +1990,7 @@ function wireproxy_service() {
 
                     wireproxy_service_status="up"
 
-                    ui after_status_changed
+                    # ui after_status_changed
                     ;;
                 exited)
                     local exit_status="${1}" && shift
@@ -1950,7 +2005,7 @@ function wireproxy_service() {
                     else
                         info "exited ${wireproxy_service_status}->failure"
                         wireproxy_service_status="failure"
-                        # wirething fire_ensure_host_endpoint_is_working
+                        wirething fire_ensure_host_endpoint_is_working
                     fi
                     ;;
             esac
@@ -2059,7 +2114,8 @@ function udphole_punch() {
             local result="offline"
 
             {
-                echo "" | nc -w 1 -p "${host_port}" -u "${UDPHOLE_HOSTNAME}" "${UDPHOLE_PORT}" \
+            #if timeout 2 nc -z ${WIREPROXY_HEALTH_BIND/:/ } 2>&${null}
+                echo "" | timeout 2 nc -p "${host_port}" -u "${UDPHOLE_HOSTNAME}" "${UDPHOLE_PORT}" \
                     || echo ""
             } | {
                 read endpoint
@@ -2077,7 +2133,7 @@ function udphole_punch() {
             }
             ;;
         open)
-            debug
+            # debug
 
             if ! udp open "${UDPHOLE_HOSTNAME}" "${UDPHOLE_PORT}"
             then
@@ -2289,18 +2345,20 @@ function ntfy_pubsub() {
         init)
             info
             NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
-            NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --location}"
+            NTFY_CURL_OPTIONS="${NTFY_CURL_OPTIONS:--sS --no-buffer --ipv4}"
             NTFY_PUBLISH_TIMEOUT="${NTFY_PUBLISH_TIMEOUT:-25}" # 25 seconds
             NTFY_POLL_TIMEOUT="${NTFY_POLL_TIMEOUT:-5}" # 5 seconds
             NTFY_SUBSCRIBE_TIMEOUT="${NTFY_SUBSCRIBE_TIMEOUT:-720}" # 12 minutes
             NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR="${NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR:-${WT_PAUSE_AFTER_ERROR}}" # ${WT_PAUSE_AFTER_ERROR} seconds
+            export NTFY_URL NTFY_CURL_OPTIONS NTFY_PUBLISH_TIMEOUT NTFY_POLL_TIMEOUT NTFY_SUBSCRIBE_TIMEOUT NTFY_SUBSCRIBE_PAUSE_AFTER_ERROR
+            export -f ntfy_pubsub
             ;;
         status)
-            debug "curl -sS --head ${NTFY_URL}"
+            debug "curl -sS --head --max-time ${NTFY_POLL_TIMEOUT} --stderr - ${NTFY_URL}"
 
             local result
 
-            if curl -sS --head "${NTFY_URL}" 2>&${WT_LOG_DEBUG} >&${WT_LOG_DEBUG}
+            if curl -sS --head  --max-time "${NTFY_POLL_TIMEOUT}" --stderr - "${NTFY_URL}" 2>&${WT_LOG_DEBUG} >&${WT_LOG_TRACE}
             then
                 result="online"
             else
@@ -2345,6 +2403,15 @@ function ntfy_pubsub() {
                 read poll_response || true
 
                 case "${poll_response}" in
+                    "curl: (28) Resolving timed out after"*)
+                        debug "$(short "${topic}") ${since} response: ${poll_response}"
+                        echo "error"
+                        return 1
+                        ;;
+                    "curl: (6) Could not resolve host:"*)
+                        debug "$(short "${topic}") ${since} response: ${poll_response}"
+                        echo "error"
+                        ;;
                     "curl"*)
                         error "$(short "${topic}") ${since} response: ${poll_response}"
                         echo "error"
@@ -2362,46 +2429,57 @@ function ntfy_pubsub() {
                 esac
             }
             ;;
-        get_interface)
-            if stun_punch open
-            then
-                address="$(stun_punch get address)"
-                stun_punch close
+        subscribe_exec)
+            info
 
-                if [[ "${address}" != "" ]]
-                then
-                    echo "--ipv4 --interface ${address}"
-                fi
-            fi
+            trap "" ERR
+            set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
+            local _topic
+
+            for _topic in ${topic_list}
+            do
+                debug "poll ${_topic}"
+                curl ${NTFY_CURL_OPTIONS} \
+                    --max-time "${NTFY_POLL_TIMEOUT}" --stderr - \
+                    "${NTFY_URL}/${_topic}/json?since=all&poll=1" \
+                    | tail -n 1 \
+                     > /dev/null
+                sleep 1
+            done
+
+            curl ${NTFY_CURL_OPTIONS} ${NTFY_SUBSCRIBE_INTERFACE} \
+                --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" \
+                "${NTFY_URL}/${topic_list// /,}/json?since=5m"
+            debug "subscribe exit status ${?}"
             ;;
         subscribe_start)
-            local topic="${1}" && shift
-            local since="${1}" && shift
-            local format="${1:-json}"
+            local topic_list="$(IFS=" "; echo "${*}")"
+            export topic_list
 
-            debug "${topic}"
-
-            local interface="$(ntfy_pubsub get_interface)"
-
-            debug "curl ${NTFY_CURL_OPTIONS} ${interface} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - ${NTFY_URL}/${topic}/${format}?since=${since}"
-            exec {NTFY_SUBSCRIBE_FD}< <(exec curl ${NTFY_CURL_OPTIONS} ${interface} --max-time "${NTFY_SUBSCRIBE_TIMEOUT}" --stderr - \
-                    "${NTFY_URL}/${topic}/${format}?since=${since}")
+            exec {NTFY_SUBSCRIBE_FD}< <(exec -a "pubsub subscribe_exec" bash <<<"ntfy_pubsub subscribe_exec")
+            #exec {NTFY_SUBSCRIBE_FD}< <(ntfy_pubsub subscribe_exec "${@}")
             NTFY_SUBSCRIBE_PID="${!}"
+            export NTFY_SUBSCRIBE_FD
             ;;
         subscribe_stop)
             if [[ ! -v NTFY_SUBSCRIBE_PID ]]
             then
                 info "'ntfy' was not running"
             else
-                if sys terminate "${NTFY_SUBSCRIBE_PID}"
+                if sys terminate_from_parent_pid "${NTFY_SUBSCRIBE_PID}"
                 then
                     info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was successfully stopped"
                 else
                     info "'ntfy' pid=${NTFY_SUBSCRIBE_PID} was not running"
                 fi
+                unset -v NTFY_SUBSCRIBE_PID
             fi
             ;;
         subscribe_run)
+            trap "" ERR
+            set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
             while ntfy_pubsub subscribe_process
             do
                 :
@@ -2410,27 +2488,62 @@ function ntfy_pubsub() {
         subscribe_process)
             local subscribe_response
 
-            if [[ ! -v NTFY_SUBSCRIBE_FD ]]
-            then
-                return 1
-            fi
+            read -t 60 subscribe_response <&"${NTFY_SUBSCRIBE_FD}"
+            exit_status="${?}"
 
-            if ! read -t 60 -u "${NTFY_SUBSCRIBE_FD}" subscribe_response
+            if [[ "${exit_status}" -gt 128 ]]
             then
+                debug "subscribe_process read timeout exit status ${exit_status}"
+                echo '{"event":"connection_lost"}'
+                return 1
+            elif [[ "${exit_status}" -eq 1 ]]
+            then
+                debug "subscribe_process exiting"
+                echo '{"event":"exit"}'
+                return 1
+            elif [[ "${exit_status}" -ne 0 ]]
+            then
+                error "subscribe_process read error exit status ${exit_status}"
+                echo '{"event":"error"}'
                 return 1
             fi
 
             case "${subscribe_response}" in
                 "")
                     ;;
-                "curl"*"timed out"*)
+                "curl: (28) Operation timed out after"*)
                     debug "$(short "${topic}") response: ${subscribe_response}"
                     echo '{"event":"timeout"}'
                     return 1
                     ;;
-                "curl: (56) Recv failure: Software caused connection abort")
-                    info "$(short "${topic}") response: ${subscribe_response}"
+                "curl: (35) Recv failure: Software caused connection abort")
+                    debug "$(short "${topic}") response: ${subscribe_response}"
                     echo '{"event":"connection_lost"}'
+                    return 1
+                    ;;
+                "curl: (56) Recv failure: Software caused connection abort")
+                    debug "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event":"connection_lost"}'
+                    return 1
+                    ;;
+                "curl: (28) Resolving timed out after"*)
+                    debug "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event":"error"}'
+                    return 1
+                    ;;
+                "curl: (28) Connection timed out after"*)
+                    debug "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event":"error"}'
+                    return 1
+                    ;;
+                "curl: (6) Could not resolve host:"*)
+                    debug "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event":"error"}'
+                    return 1
+                    ;;
+                "curl: (7) Failed to connect to"*)
+                    debug "$(short "${topic}") response: ${subscribe_response}"
+                    echo '{"event":"error"}'
                     return 1
                     ;;
                 "curl"*)
@@ -2438,6 +2551,7 @@ function ntfy_pubsub() {
                     echo '{"event":"error"}'
                     return 1
                     ;;
+# TODO {"code":42901,"http":429,"error":"limit reached: too many requests; increase your limits with a paid plan, see https://ntfy.sh","link":"https://ntfy.sh/docs/publish/#limitations"}
                 "{"*"error"*)
                     error "$(short "${topic}") response: ${subscribe_response}"
                     echo '{"event":"error"}'
@@ -2445,6 +2559,7 @@ function ntfy_pubsub() {
                     ;;
                 *)
                     echo "${subscribe_response}"
+                    ;;
             esac
             ;;
         subscribe)
@@ -2550,7 +2665,7 @@ function gpg_ephemeral_encryption() {
             fi
             ;;
         encrypt)
-            debug
+            # debug
             local data="${1}" && shift
 
             if [[ ${#@} -gt 0 ]]
@@ -2573,7 +2688,7 @@ function gpg_ephemeral_encryption() {
             }
             ;;
         decrypt)
-            debug
+            # debug
             local data="${1}" && shift
 
             {
@@ -2583,7 +2698,9 @@ function gpg_ephemeral_encryption() {
             } | {
                 capture start
 
-                debug "gpg --decrypt ${GPG_OPTIONS} --local-user ${config["host_gpg_id"]}"
+                # trace "gpg --decrypt ${GPG_OPTIONS} --local-user ${config["host_gpg_id"]}"
+
+                # TODO fix gpg returning non 0 status
 
                 gpg --decrypt ${GPG_OPTIONS} \
                     --local-user "${config["host_gpg_id"]}" \
@@ -2739,6 +2856,8 @@ function wirething() {
             WT_HOST_PORT_FILE="${WT_STATE_PATH}/host_port"
             WT_HOST_ENDPOINT_FILE="${WT_STATE_PATH}/host_endpoint"
             WT_PEER_ENDPOINT_PATH="${WT_STATE_PATH}/peer_endpoint"
+
+            network_status="offline"
             ;;
         up)
             info
@@ -2769,6 +2888,9 @@ function wirething() {
                     echo "" > "${WT_PEER_ENDPOINT_PATH}/${_peer_name}"
                 fi
             done
+
+            network_status="$(pubsub status)"
+            wirething ensure_host_endpoint_is_working
 
             coproc WIRETHING_SUBSCRIBE_BG (wirething subscribe_encrypted_peer_endpoint)
             ;;
@@ -3018,21 +3140,42 @@ function wirething() {
                     topic_index["${topic}"]="${_peer_name}"
                 done
 
-                topic_list="$(IFS=","; echo "${!topic_index[*]}")"
-
                 wirething subscribe_encrypted_peer_endpoint_run
 
                 unset -v topic_index
             done
             ;;
+        subscribe_set_interface)
+            debug
+
+            NTFY_SUBSCRIBE_INTERFACE=""
+
+            if punch open
+            then
+                local address="$(punch get address)"
+                punch close
+
+                if [[ "${address}" != "" ]]
+                then
+                    NTFY_SUBSCRIBE_INTERFACE="--interface ${address}"
+                fi
+            fi
+            export NTFY_SUBSCRIBE_INTERFACE
+            ;;
         subscribe_encrypted_peer_endpoint_run)
             trap "pubsub subscribe_stop" "EXIT"
 
-            NTFY_SUBSCRIBE_TIMEOUT="$(topic next)"
+            # event on_status_change pubsub "starting"
 
-            pubsub subscribe_start "${topic_list}" "all" "json"
+            local NTFY_SUBSCRIBE_TIMEOUT="$(topic next)"
+            export NTFY_SUBSCRIBE_TIMEOUT
 
-            pubsub subscribe_run | {
+            wirething subscribe_set_interface
+
+            pubsub subscribe_start "${!topic_index[@]}"
+
+            #pubsub subscribe_run | {
+            (exec -a "pubsub subscribe_run" bash <<<"$(echo -e "shopt -s expand_aliases\n$(alias pubsub)\npubsub subscribe_run")") | {
                 declare -A peer_endpoint_list
 
                 for _peer_name in ${config["peer_name_list"]}
@@ -3055,9 +3198,9 @@ function wirething() {
                 done
             }
 
-            pubsub subscribe_stop
-
             trap "" "EXIT"
+            pubsub subscribe_stop
+            # event on_status_change pubsub "stopped 0"
             ;;
         subscribe_encrypted_peer_endpoint_process)
             case "${line}" in
@@ -3087,24 +3230,35 @@ function wirething() {
                         peer_endpoint_list["${peer_name}"]="${new_peer_endpoint}"
                         peer_endpoint_list["${peer_name}_update_time"]="${event_time}"
 
+                        # TODO DEBUG REMOVE ME
+                        # event fire network_status offline
+                        # event fire ensure_host_endpoint_is_working
+                        # TODO DEBUG REMOVE ME
                         info "new peer endpoint ${peer_name} ${new_peer_endpoint}"
                         event fire new_peer_endpoint "${peer_name} ${new_peer_endpoint} ${new_local_port:-0} ${event_time}"
                     fi
                     ;;
                 *'"event":"open"'*)
-                    :
+                    # event on_status_change pubsub "running"
+                    event fire network_status online
                     ;;
                 *'"event":"timeout"'*)
                     info "event=timeout"
                     sleep "${WT_PAUSE_AFTER_TIMEOUT}"
                     ;;
+                *'"event":"exit"'*)
+                    info "event=exit"
+                    event fire network_status offline
+                    ;;
                 *'"event":"connection_lost"'*)
                     info "event=connection_lost"
+                    event fire network_status offline
                     sleep "${WT_PAUSE_AFTER_CONNECTION_LOST}"
-                    event fire ensure_host_endpoint_is_working
+                    # event fire ensure_host_endpoint_is_working
                     ;;
                 *'"event":"error"'*)
                     info "event=error"
+                    event fire network_status offline
                     sleep "${WT_PAUSE_AFTER_ERROR}"
                     ;;
                 *)
@@ -3137,13 +3291,22 @@ function wirething() {
                     wirething set peer_endpoint "${peer_name}" "${endpoint}" "${event_time}"
 
                     interface reload
+
+                    ui after_status_changed
                     ;;
                 ensure_host_endpoint_is_working)
+                    if ! sys is_running
+                    then
+                        return 0
+                    fi
+
                     interface down
 
                     wirething ensure_host_endpoint_is_working
 
                     interface up
+
+                    ui after_status_changed
                     ;;
                 ensure_host_endpoint_is_published)
                     local peer_name="${1}" && shift
@@ -3152,6 +3315,23 @@ function wirething() {
                     then
                         :
                     fi
+                    ;;
+                network_status)
+                    local new_status="${1}"
+
+                    local transition="${network_status}->${new_status}"
+
+                    trace "network_status ${transition}"
+
+                    case "${transition}" in
+                        "online->offline")
+                            network_status="${new_status}"
+                            ;;
+                        "offline->online")
+                            network_status="${new_status}"
+                            event fire ensure_host_endpoint_is_working
+                            ;;
+                    esac
                     ;;
             esac
             ;;
@@ -3194,6 +3374,9 @@ function wirething() {
                 read encrypted_host_endpoint
 
                 case "${encrypted_host_endpoint}" in
+                    "connection_lost")
+                        return 1
+                        ;;
                     "error")
                         return 1
                         ;;
@@ -3233,6 +3416,9 @@ function wirething() {
 
                 case "${encrypted_peer_endpoint}" in
                     "")
+                        ;;
+                    "connection_lost")
+                        return 1
                         ;;
                     "error")
                         return 1
@@ -3558,7 +3744,7 @@ function host() {
             ;;
         init)
             info
-            WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-30}" # 30 seconds
+            WT_HOST_OFFLINE_START_DELAY="${WT_HOST_OFFLINE_START_DELAY:-5}" # 30 seconds
             WT_HOST_OFFLINE_PULL_STATUS_INTERVAL="${WT_HOST_OFFLINE_PULL_STATUS_INTERVAL:-30}" # 30 seconds
             WT_HOST_OFFLINE_ENSURE_INTERVAL="${WT_HOST_OFFLINE_ENSURE_INTERVAL:-600}" # 10 minute
 
@@ -3854,7 +4040,7 @@ function peer() {
             ;;
         init)
             info
-            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-30}" # 30 seconds
+            WT_PEER_OFFLINE_START_DELAY="${WT_PEER_OFFLINE_START_DELAY:-5}" # 30 seconds
             WT_PEER_OFFLINE_FETCH_SINCE="${WT_PEER_OFFLINE_FETCH_SINCE:-60}" # 1 minute
             WT_PEER_OFFLINE_PULL_STATUS_INTERVAL="${WT_PEER_OFFLINE_PULL_STATUS_INTERVAL:-30}" # 30 seconds
             WT_PEER_OFFLINE_FETCH_INTERVAL="${WT_PEER_OFFLINE_FETCH_INTERVAL:-45}" # 45 seconds
