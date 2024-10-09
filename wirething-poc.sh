@@ -1172,7 +1172,8 @@ function wg_interface() {
 
                     local result="offline"
 
-                    if os_ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_TRACE} 1>&${WT_LOG_TRACE}
+                    # TODO output error to trace log with prefix?
+                    if os_ping "${wg_peer_address["${peer_name}"]}" 2>&${WT_LOG_TRACE} 1>&${null}
                     then
                         result="online"
                     fi
@@ -1249,7 +1250,7 @@ function wg_quick_update_location() {
 
         if [[ "${local_port}" != "0" && "${local_ip}" != "" ]]
         then
-            if os_ping_quick "${local_ip}" >&${null}
+            if os_ping_quick "${local_ip}" 2>&${WT_LOG_TRACE} 1>&${null}
             then
                 wg_quick_location["${_peer_name}"]="local"
             fi
