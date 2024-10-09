@@ -801,6 +801,11 @@ function on_status_change() {
 
                     # TODO ui after_status_changed
                     ;;
+                "failure->stopped")
+                    :
+                    # TODO avoid that state
+                    #status set interface "stopped"
+                    ;;
                 "running->stopped")
                     status set interface "stopped"
                     ;;
