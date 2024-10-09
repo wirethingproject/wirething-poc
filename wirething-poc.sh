@@ -1767,6 +1767,14 @@ function wireproxy_service() {
             wireproxy_exec=(
                 "${WIREPROXY_BIN}"
             )
+
+            if timeout 2 nc -z ${WIREPROXY_HEALTH_BIND/:/ } 2>&${null}
+            then
+                error "health bind disabled, tcp ${WIREPROXY_HEALTH_BIND} address already in use"
+            elif [ "${WIREPROXY_HEALTH_BIND}" != "disabled" ]
+            then
+                wireproxy_exec+=("-i" "${WIREPROXY_HEALTH_BIND}")
+            fi
             ;;
         exec)
             info
@@ -1841,15 +1849,30 @@ function wireproxy_service() {
                         ;;
                     W)
                         # TODO handle bind errors
-                        # EIPC error -48: failed to set listen_port: listen udp4 :55554: bind: address already in use
-                        # WIPC error -48: failed to set listen_port: listen udp4 :55554: bind: address already in use
                         # Wlisten tcp failed: listen tcp 127.0.0.1:3128: bind: address already in use
                         # Wlisten tcp 127.0.0.1:22000: bind: address already in use
+                        read -r msg
+                        error "[${event}] ${msg}"
                         ;;
-                    D|E) # Debug Error
+                    D) # Debug
                         read -r msg
                         error "[${event}] ${msg}"
                         continue
+                        ;;
+                    E) # Error
+                        read -r msg
+                        error "[${event}] ${msg}"
+
+                        case "${msg}" in
+                            "bind: address already in use listen udp4 :"*)
+                                # event fire host_status "offline"
+                                event on_status_change interface "bind_error"
+                                break
+                                ;;
+                            *)
+                                continue
+                                ;;
+                        esac
                         ;;
                     *)
                         read -r newline
@@ -1864,7 +1887,6 @@ function wireproxy_service() {
                     error "Invalid newline '${newline}'"
                 fi
             done
-
             ;;
         exit)
             info
@@ -1965,6 +1987,8 @@ function wireproxy_interface() {
 
             wireproxy_service run &
             wireproxy_service_pid="${!}"
+
+            info "'wireproxy' pid=${wireproxy_service_pid}"
             ;;
         down)
             info
@@ -1975,6 +1999,8 @@ function wireproxy_interface() {
             else
                 if sys terminate_from_parent_pid "${wireproxy_service_pid}"
                 then
+                    info "'wireproxy' pid=${wireproxy_service_pid} stopping"
+                    wait "${wireproxy_service_pid}"
                     info "'wireproxy' pid=${wireproxy_service_pid} was successfully stopped"
                 else
                     info "'wireproxy' pid=${wireproxy_service_pid} was not running"
