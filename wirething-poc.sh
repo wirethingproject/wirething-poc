@@ -2049,7 +2049,6 @@ function udphole_punch() {
             UDPHOLE_HOSTNAME="${UDPHOLE_HOSTNAME:-udphole.wirething.org}" # udphole.wirething.org is a dns cname poiting to hdphole.fly.dev
             UDPHOLE_PORT="${UDPHOLE_PORT:-6094}"
             UDPHOLE_READ_TIMEOUT="${UDPHOLE_READ_TIMEOUT:-10}" # 10 seconds
-            UDPHOLE_PUNCH_PID="${WT_PID}"
             ;;
         status)
             local host_port="${1}" && shift
@@ -2095,8 +2094,11 @@ function udphole_punch() {
             case "${name}" in
                 port)
                     {
-                        udp port ${UDPHOLE_HOSTNAME} ${UDPHOLE_PORT} ${UDPHOLE_PUNCH_PID}
+                        udp port
                     } | {
+                        trap "" ERR
+                        set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
                         read -t "${UDPHOLE_READ_TIMEOUT}" port
                         if [[ ${?} -lt 128 ]]
                         then
@@ -2108,10 +2110,31 @@ function udphole_punch() {
                         fi
                     }
                     ;;
+                address)
+                    {
+                        udp address
+                    } | {
+                        trap "" ERR
+                        set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
+                        read -t "${UDPHOLE_READ_TIMEOUT}" address
+                        if [[ ${?} -lt 128 ]]
+                        then
+                            info "address ${address:-''}"
+                            echo "${address}"
+                        else
+                            error "address timed out"
+                            echo ""
+                        fi
+                    }
+                    ;;
                 endpoint)
                     {
                         udp readline
                     } | {
+                        trap "" ERR
+                        set +o errexit  # +e Don't exit immediately if any command returns a non-zero status
+
                         read -t "${UDPHOLE_READ_TIMEOUT}" endpoint
                         if [[ ${?} -lt 128 ]]
                         then
@@ -2224,7 +2247,7 @@ function stun_punch() {
                         # STUN_NAT_PORT="${STUN_NAT_ENDPOINT/*:/}"
                         ;;
                     *)
-                        error "${_line}"
+                        info "${_line}"
                         return 1
                 esac
             done
